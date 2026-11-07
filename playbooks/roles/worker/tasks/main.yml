@@ -94,14 +94,15 @@
     - worker
     - join
 
-- name: Fallback — read join command from file on control plane
+- name: Fallback — read join command from file on first control-plane node
   ansible.builtin.slurp:
     src: /var/lib/kubeadm/join-command.txt
-  delegate_to: "{{ worker_control_plane_host }}"
+  delegate_to: "{{ groups['control-plane'][0] }}"
   register: worker_join_file
   when:
     - worker_join_cluster | bool
     - worker_join_command is not defined or worker_join_command | length == 0
+    - groups['control-plane'] | default([]) | length > 0
   tags:
     - worker
     - join

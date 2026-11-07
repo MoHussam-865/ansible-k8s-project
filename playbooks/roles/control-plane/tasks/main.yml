@@ -87,53 +87,102 @@
     - kubeadm
 
 # =============================================================================
-# TASK 3: Run kubeadm init
+# TASK 3: Generate / retrieve certificate key for --upload-certs
 # =============================================================================
-# THIS IS THE KEY TASK OF THE CONTROL PLANE ROLE.
-#
-# 'kubeadm init' bootstraps the cluster. It:
-#   1. Generates a Certificate Authority (CA)
-#   2. Creates TLS certificates for secure node-to-node communication
-#   3. Generates a SHARED SECRET (token) that workers use to join
-#   4. Writes initial configuration to /etc/kubernetes/
-#   5. Outputs a 'kubeadm join' command that workers will run
-#
-# OPTIONS EXPLAINED:
-#
-#   --pod-network-cidr=10.0.0.0/16
-#     Defines the IP address range for pod-to-pod networking.
-#     Containers get IPs from this range.
-#     Must NOT overlap with your physical network (10.1.0.0/24).
-#     10.0.0.0/16 is the DEFAULT and works for most labs.
-#
-#   --control-plane-endpoint=10.1.0.10:6443
-#     The host:port where workers reach the Kubernetes API.
-#     Must be accessible from ALL worker nodes.
-#     Port 6443 is the IANA-registered port for Kubernetes.
-#
-#   --apiserver-cert-validity-days=3650
-#     How long the internal TLS certificates are valid.
-#     Default is 3650 (10 years). Fine for a lab.
-#     In production you'd use shorter-lived certs rotated by cert-manager.
-#
-# WHAT register CAPTURES:
-#   kubeadm_init_result.stdout will contain the full output.
-#   The output includes a line like:
-#     "kubeadm join --token=abc123... control-plane-01:6443"
-#   We extract this line so workers can run it.
+# Additional masters need a certificate key to decrypt the uploaded
+# certificates. The key must be generated BEFORE kubeadm init and passed
+# via --certificate-key, so the upload uses the SAME key we store.
+# On first run we generate a new key; on re-runs we read from file.
+# =============================================================================
+
+- name: Check if certificate key file already exists (re-run)
+  ansible.builtin.stat:
+    path: "{{ kubeadm_cert_key_file }}"
+  register: kubeadm_cert_key_file_check
+  run_once: true
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
+
+- name: Generate certificate key for additional masters (first run)
+  ansible.builtin.command:
+    cmd: kubeadm certs certificate-key
+  register: kubeadm_cert_key_gen
+  changed_when: false
+  run_once: true
+  when:
+    - run_kubeadm_init | bool
+    - not kubeadm_cert_key_file_check.stat.exists
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
+
+- name: Store generated certificate key as a fact
+  ansible.builtin.set_fact:
+    kubeadm_certificate_key_raw: "{{ kubeadm_cert_key_gen.stdout | default('') | trim }}"
+  run_once: true
+  when:
+    - run_kubeadm_init | bool
+    - kubeadm_cert_key_gen is defined
+    - kubeadm_cert_key_gen.stdout is defined
+    - kubeadm_cert_key_gen.stdout | length > 0
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
+
+- name: Read certificate key from file on re-run
+  ansible.builtin.slurp:
+    src: "{{ kubeadm_cert_key_file }}"
+  register: kubeadm_cert_key_file_content
+  run_once: true
+  when:
+    - run_kubeadm_init | bool
+    - kubeadm_cert_key_file_check.stat.exists
+    - kubeadm_certificate_key_raw is not defined or kubeadm_certificate_key_raw | length == 0
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
+
+- name: Set certificate key from file (fallback on re-run)
+  ansible.builtin.set_fact:
+    kubeadm_certificate_key_raw: "{{ kubeadm_cert_key_file_content.content | b64decode | trim }}"
+  run_once: true
+  when:
+    - run_kubeadm_init | bool
+    - kubeadm_cert_key_file_content.skipped is not defined
+    - kubeadm_cert_key_file_content.content is defined
+    - kubeadm_cert_key_file_content.content | length > 0
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
+
+# =============================================================================
+# TASK 4: Run kubeadm init with the certificate key
+# =============================================================================
+# We pass --certificate-key with the SAME key we generated/stored above,
+# ensuring that the uploaded certificates can be decrypted by additional
+# masters using the same key.
 # =============================================================================
 
 - name: Initialize Kubernetes cluster with kubeadm
   ansible.builtin.command:
-    cmd: >
+    cmd: >-
       kubeadm init
         --pod-network-cidr={{ kubeadm_pod_network_cidr }}
         --control-plane-endpoint={{ kubeadm_apiserver_endpoint }}
         --upload-certs
+        --certificate-key={{ kubeadm_certificate_key_raw }}
   become: true
   when:
     - run_kubeadm_init | bool
     - not cluster_ca_check.stat.exists
+    - kubeadm_certificate_key_raw is defined
+    - kubeadm_certificate_key_raw | length > 0
   register: kubeadm_init_result
   changed_when: kubeadm_init_result.rc == 0
   # ---------------------------------------------------------------------------
@@ -146,6 +195,22 @@
   tags:
     - control-plane
     - kubeadm
+
+- name: Write certificate key to persistent file
+  ansible.builtin.copy:
+    content: "{{ kubeadm_certificate_key_raw }}"
+    dest: "{{ kubeadm_cert_key_file }}"
+    mode: "0600"
+  become: true
+  run_once: true
+  when:
+    - run_kubeadm_init | bool
+    - kubeadm_certificate_key_raw is defined
+    - kubeadm_certificate_key_raw | length > 0
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
 
 # =============================================================================
 # TASK 4: Extract the join command from kubeadm output
@@ -217,100 +282,6 @@
   tags:
     - control-plane
     - kubeadm
-
-# =============================================================================
-# TASK: Generate certificate key for additional control-plane nodes
-# =============================================================================
-# Additional masters need a certificate key to join with
-# --control-plane --certificate-key=<key>. This key is used to
-# decrypt the certificates that the first master uploads.
-#
-# kubeadm certs certificate-key generates a random key that can be
-# used with 'kubeadm init --upload-certs' or passed to the first
-# master's kubeadm configuration. We store this key as a fact so
-# additional masters can retrieve it via hostvars.
-# =============================================================================
-
-- name: Check if certificate key file already exists (re-run)
-  ansible.builtin.stat:
-    path: "{{ kubeadm_cert_key_file }}"
-  register: kubeadm_cert_key_file_check
-  run_once: true
-  tags:
-    - control-plane
-    - kubeadm
-    - multi-master
-
-- name: Generate certificate key for additional masters (first run only)
-  ansible.builtin.command:
-    cmd: kubeadm certs certificate-key
-  register: kubeadm_cert_key_result
-  changed_when: false
-  run_once: true
-  when:
-    - run_kubeadm_init | bool
-    - not kubeadm_cert_key_file_check.stat.exists
-  tags:
-    - control-plane
-    - kubeadm
-    - multi-master
-
-- name: Store certificate key as a fact
-  ansible.builtin.set_fact:
-    kubeadm_certificate_key_raw: "{{ kubeadm_cert_key_result.stdout | default('') | trim }}"
-  run_once: true
-  when:
-    - run_kubeadm_init | bool
-    - kubeadm_cert_key_result is defined
-    - kubeadm_cert_key_result.stdout is defined
-    - kubeadm_cert_key_result.stdout | length > 0
-  tags:
-    - control-plane
-    - kubeadm
-    - multi-master
-
-- name: Read certificate key from file on re-run (if already generated)
-  ansible.builtin.slurp:
-    src: "{{ kubeadm_cert_key_file }}"
-  register: kubeadm_cert_key_file_content
-  run_once: true
-  when:
-    - run_kubeadm_init | bool
-    - kubeadm_cert_key_file_check.stat.exists
-    - kubeadm_certificate_key_raw is not defined or kubeadm_certificate_key_raw | length == 0
-  tags:
-    - control-plane
-    - kubeadm
-    - multi-master
-
-- name: Set certificate key from file
-  ansible.builtin.set_fact:
-    kubeadm_certificate_key_raw: "{{ kubeadm_cert_key_file_content.content | b64decode | trim }}"
-  run_once: true
-  when:
-    - run_kubeadm_init | bool
-    - kubeadm_cert_key_file_content.skipped is not defined
-    - kubeadm_cert_key_file_content.content is defined
-    - kubeadm_cert_key_file_content.content | length > 0
-  tags:
-    - control-plane
-    - kubeadm
-    - multi-master
-
-- name: Write certificate key to persistent file
-  ansible.builtin.copy:
-    content: "{{ kubeadm_certificate_key_raw }}"
-    dest: "{{ kubeadm_cert_key_file }}"
-    mode: "0600"
-  become: true
-  run_once: true
-  when:
-    - kubeadm_certificate_key_raw is defined
-    - kubeadm_certificate_key_raw | length > 0
-  tags:
-    - control-plane
-    - kubeadm
-    - multi-master
 
 # =============================================================================
 # TASK 6: Deploy kubelet configuration for control plane
