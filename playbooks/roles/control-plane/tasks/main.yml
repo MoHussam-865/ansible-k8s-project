@@ -196,6 +196,19 @@
     - control-plane
     - kubeadm
 
+- name: Ensure kubeadm data directory exists
+  ansible.builtin.file:
+    path: "{{ kubeadm_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  run_once: true
+  tags:
+    - control-plane
+    - kubeadm
+
 - name: Write certificate key to persistent file
   ansible.builtin.copy:
     content: "{{ kubeadm_certificate_key_raw }}"
@@ -259,15 +272,6 @@
 # You can read it later with:
 #   ansible control-plane-01 -m fetch -a "src=/var/lib/kubeadm/join-command.txt dest=./"
 # =============================================================================
-
-- name: Ensure kubeadm directory exists
-  ansible.builtin.file:
-    path: "{{ kubeadm_data_dir }}"
-    state: directory
-    owner: root
-    group: root
-    mode: '0755'
-  become: true
 
 - name: Write join command to persistent file
   ansible.builtin.copy:
