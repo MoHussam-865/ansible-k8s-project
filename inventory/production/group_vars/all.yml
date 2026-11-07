@@ -29,7 +29,7 @@ containerd_package: "containerd.io"
 pod_network_cidr: "10.0.0.0/16"
 
 # Kubernetes API endpoint — dynamically resolved from the first control-plane node
-kubernetes_api_endpoint: "{{ hostvars[groups['control-plane'][0]]['ansible_facts']['default_ipv4']['address'] }}"
+kubernetes_api_endpoint: "{{ hostvars[groups['control-plane'][0]]['ansible_host'] }}"
 
 # Kubernetes OS user
 kubernetes_user: "root"

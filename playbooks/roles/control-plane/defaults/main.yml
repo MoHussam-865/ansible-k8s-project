@@ -19,7 +19,7 @@ kubeadm_pod_network_cidr: "{{ pod_network_cidr | default('10.0.0.0/16') }}"
 # Through HAProxy, not directly at a specific master's IP.
 # Must NOT include the https:// protocol — kubeadm's --control-plane-endpoint
 # flag expects a bare <host>:<port> string.
-kubeadm_apiserver_endpoint: "{{ control_plane_endpoint | default(ansible_facts['default_ipv4']['address'] ~ ':' ~ (kubernetes_api_port | default('6443'))) }}"
+kubeadm_apiserver_endpoint: "{{ control_plane_endpoint | default(ansible_host ~ ':' ~ (kubernetes_api_port | default('6443'))) }}"
 
 # Directory where kubeadm stores cluster certificates and config
 kubeadm_data_dir: /var/lib/kubeadm

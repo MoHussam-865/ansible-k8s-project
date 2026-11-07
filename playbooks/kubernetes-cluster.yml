@@ -113,7 +113,7 @@
   pre_tasks:
     - name: Wait for control plane API to be reachable from worker
       ansible.builtin.wait_for:
-        host: "{{ hostvars[groups['control-plane'][0]]['ansible_facts']['default_ipv4']['address'] }}"
+        host: "{{ hostvars[groups['control-plane'][0]]['ansible_host'] }}"
         port: "{{ kubernetes_api_port | default('6443') }}"
         timeout: 120
         connect_timeout: 2

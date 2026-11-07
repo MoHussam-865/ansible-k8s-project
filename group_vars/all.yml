@@ -25,7 +25,7 @@ pod_network_cidr: "10.0.0.0/16"
 
 # Kubernetes API endpoint — dynamically resolved from the first control-plane node.
 # Uses hostvars cross-group reference with groups[] index instead of hardcoded hostname.
-kubernetes_api_endpoint: "{{ hostvars[groups['control-plane'][0]]['ansible_facts']['default_ipv4']['address'] }}"
+kubernetes_api_endpoint: "{{ hostvars[groups['control-plane'][0]]['ansible_host'] }}"
 
 # ---------------------------------------------------------------------------
 # Primary (first) control-plane hostname

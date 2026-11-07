@@ -13,5 +13,5 @@ kubernetes_role: "worker"
 containerd_worker_config: true
 
 # How workers discover the control plane (through HAProxy, not a specific master)
-control_plane_ip: "{{ hostvars[groups['haproxy'][0]]['ansible_facts']['default_ipv4']['address'] | default('') }}"
+control_plane_ip: "{{ hostvars[groups['haproxy'][0]]['ansible_host'] | default('') }}"
 control_plane_port: 6443
