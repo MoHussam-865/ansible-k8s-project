@@ -89,6 +89,31 @@
   when:
     - worker_join_cluster | bool
     - hostvars[worker_control_plane_host]['kubeadm_join_command_raw'] is defined
+    - hostvars[worker_control_plane_host]['kubeadm_join_command_raw'] | length > 0
+  tags:
+    - worker
+    - join
+
+- name: Fallback — read join command from file on control plane
+  ansible.builtin.slurp:
+    src: /var/lib/kubeadm/join-command.txt
+  delegate_to: "{{ worker_control_plane_host }}"
+  register: worker_join_file
+  when:
+    - worker_join_cluster | bool
+    - worker_join_command is not defined or worker_join_command | length == 0
+  tags:
+    - worker
+    - join
+
+- name: Set join command from file if hostvars was empty
+  ansible.builtin.set_fact:
+    worker_join_command: "{{ worker_join_file.content | b64decode | trim }}"
+  when:
+    - worker_join_cluster | bool
+    - worker_join_file.skipped is not defined
+    - worker_join_file.content is defined
+    - worker_join_file.content | length > 0
   tags:
     - worker
     - join

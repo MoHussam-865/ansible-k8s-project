@@ -178,8 +178,8 @@
     kubeadm_join_command_raw: "{{ generated_join_command.stdout }}"
   run_once: true
   when:
-    - kubeadm_init_result is defined
-    - kubeadm_init_result.changed
+    - generated_join_command.stdout is defined
+    - generated_join_command.stdout | length > 0
   tags:
     - control-plane
     - kubeadm
@@ -231,7 +231,17 @@
 # additional masters can retrieve it via hostvars.
 # =============================================================================
 
-- name: Generate certificate key for additional masters
+- name: Check if certificate key file already exists (re-run)
+  ansible.builtin.stat:
+    path: "{{ kubeadm_cert_key_file }}"
+  register: kubeadm_cert_key_file_check
+  run_once: true
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
+
+- name: Generate certificate key for additional masters (first run only)
   ansible.builtin.command:
     cmd: kubeadm certs certificate-key
   register: kubeadm_cert_key_result
@@ -239,7 +249,7 @@
   run_once: true
   when:
     - run_kubeadm_init | bool
-    - not cluster_ca_check.stat.exists or kubeadm_init_result.changed
+    - not kubeadm_cert_key_file_check.stat.exists
   tags:
     - control-plane
     - kubeadm
@@ -250,9 +260,38 @@
     kubeadm_certificate_key_raw: "{{ kubeadm_cert_key_result.stdout | default('') | trim }}"
   run_once: true
   when:
+    - run_kubeadm_init | bool
     - kubeadm_cert_key_result is defined
     - kubeadm_cert_key_result.stdout is defined
     - kubeadm_cert_key_result.stdout | length > 0
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
+
+- name: Read certificate key from file on re-run (if already generated)
+  ansible.builtin.slurp:
+    src: "{{ kubeadm_cert_key_file }}"
+  register: kubeadm_cert_key_file_content
+  run_once: true
+  when:
+    - run_kubeadm_init | bool
+    - kubeadm_cert_key_file_check.stat.exists
+    - kubeadm_certificate_key_raw is not defined or kubeadm_certificate_key_raw | length == 0
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
+
+- name: Set certificate key from file
+  ansible.builtin.set_fact:
+    kubeadm_certificate_key_raw: "{{ kubeadm_cert_key_file_content.content | b64decode | trim }}"
+  run_once: true
+  when:
+    - run_kubeadm_init | bool
+    - kubeadm_cert_key_file_content.skipped is not defined
+    - kubeadm_cert_key_file_content.content is defined
+    - kubeadm_cert_key_file_content.content | length > 0
   tags:
     - control-plane
     - kubeadm

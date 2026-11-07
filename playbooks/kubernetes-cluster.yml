@@ -134,10 +134,58 @@
         - control-plane
         - multi-master
 
+    - name: Fallback — read certificate key from file on first master
+      ansible.builtin.slurp:
+        src: /var/lib/kubeadm/certificate-key.txt
+      delegate_to: "{{ groups['control-plane'][0] }}"
+      register: master_cert_key_file
+      when:
+        - not is_first_master
+        - master_certificate_key | length == 0
+      tags:
+        - control-plane
+        - multi-master
+
+    - name: Set certificate key from file if hostvars was empty
+      ansible.builtin.set_fact:
+        master_certificate_key: "{{ master_cert_key_file.content | b64decode | trim }}"
+      when:
+        - not is_first_master
+        - master_cert_key_file.skipped is not defined
+        - master_cert_key_file.content is defined
+        - master_cert_key_file.content | length > 0
+      tags:
+        - control-plane
+        - multi-master
+
     - name: Retrieve join command from first master
       ansible.builtin.set_fact:
         master_join_command: "{{ hostvars[groups['control-plane'][0]]['kubeadm_join_command_raw'] | default('') }}"
       when: not is_first_master
+      tags:
+        - control-plane
+        - multi-master
+
+    - name: Fallback — read join command from file on first master
+      ansible.builtin.slurp:
+        src: /var/lib/kubeadm/join-command.txt
+      delegate_to: "{{ groups['control-plane'][0] }}"
+      register: master_join_file
+      when:
+        - not is_first_master
+        - master_join_command | length == 0
+      tags:
+        - control-plane
+        - multi-master
+
+    - name: Set join command from file if hostvars was empty
+      ansible.builtin.set_fact:
+        master_join_command: "{{ master_join_file.content | b64decode | trim }}"
+      when:
+        - not is_first_master
+        - master_join_file.skipped is not defined
+        - master_join_file.content is defined
+        - master_join_file.content | length > 0
       tags:
         - control-plane
         - multi-master
@@ -200,13 +248,13 @@
   become: true
 
   pre_tasks:
-    - name: Wait for HAProxy or first control plane to be ready
+    - name: Wait for control plane API to be reachable from worker
       ansible.builtin.wait_for:
-        host: "{{ hostvars[groups['haproxy'][0] | default(groups['control-plane'][0])].ansible_facts.default_ipv4.address }}"
+        host: "{{ hostvars[groups['control-plane'][0]]['ansible_facts']['default_ipv4']['address'] }}"
         port: "{{ kubernetes_api_port | default('6443') }}"
         timeout: 120
         connect_timeout: 2
-      delegate_to: "{{ groups['haproxy'][0] | default(groups['control-plane'][0]) }}"
+      delegate_to: "{{ groups['control-plane'][0] }}"
       tags:
         - worker
 
