@@ -8,7 +8,7 @@
 # =============================================================================
 
 global:
-  scrape_interval: {{ prometheus_scrape_interval | default('15s') }}
+  scrape_interval: "{{ prometheus_scrape_interval | default('15s') }}"
   evaluation_interval: 15s
 
 # =============================================================================
@@ -28,7 +28,7 @@ scrape_configs:
   # ---------------------------------------------------------------------------
   - job_name: "prometheus-self"
     scrape_interval: 5s
-    static_targets:
+    static_configs:
       - targets:
           - "localhost:{{ prometheus_port | default('9090') }}"
         labels:
@@ -39,8 +39,8 @@ scrape_configs:
   # Kubernetes cluster nodes: scrape Node Exporter on every cluster node
   # ---------------------------------------------------------------------------
   - job_name: "kubernetes-cluster"
-    scrape_interval: {{ prometheus_scrape_interval | default('15s') }}
-    static_targets:
+    scrape_interval: "{{ prometheus_scrape_interval | default('15s') }}"
+    static_configs:
       - targets:
 {% for target in prometheus_scrape_targets | default([]) %}
           - "{{ target }}"

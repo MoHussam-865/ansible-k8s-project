@@ -20,7 +20,6 @@ RestartSec=10s
 ExecStart={{ prometheus_binary }} \
   --config.file={{ prometheus_config_file }} \
   --web.listen-address=0.0.0.0:{{ prometheus_port | default('9090') }} \
-  --web.systemd-socket \
   --storage.tsdb.path={{ prometheus_data_dir }}
 
 # Security hardening
