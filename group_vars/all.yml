@@ -27,6 +27,24 @@ pod_network_cidr: "10.0.0.0/16"
 # Uses hostvars cross-group reference with groups[] index instead of hardcoded hostname.
 kubernetes_api_endpoint: "{{ hostvars[groups['control-plane'][0]]['ansible_facts']['default_ipv4']['address'] }}"
 
+# ---------------------------------------------------------------------------
+# Primary (first) control-plane hostname
+# ---------------------------------------------------------------------------
+# Explicitly define which control-plane node is the FIRST/PRIMARY.
+# This is used by roles (Calico, control-plane, etc.) that need to run
+# one-time kubectl commands on a specific master.
+#
+# WHY THIS IS BETTER than groups['control-plane'][0]:
+#   groups['control-plane'] returns hosts in INVENTORY ORDER, which may
+#   not match the order you initialized them. If inventory lists master-2
+#   before master-1, groups['control-plane'][0] would be master-2 — but
+#   master-2 may not have been initialized yet.
+#
+# Set this to the FIRST host that runs kubeadm init.
+# Must match the inventory hostname (e.g., control-plane-01, master-1, etc.)
+# ---------------------------------------------------------------------------
+kubernetes_primary_master: control-plane-01
+
 # Kubernetes OS user
 kubernetes_user: "root"
 

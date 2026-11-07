@@ -1,17 +1,40 @@
 ﻿# =============================================================================
 # roles/control-plane/tasks/main.yml
 # =============================================================================
-# Initialize the Kubernetes control plane using kubeadm.
+# Bootstrap ALL Kubernetes control-plane nodes (first master + additional).
 #
 # =============================================================================
 # WHAT THIS ROLE DOES
 # =============================================================================
-#   1. Ensure prerequisites are in place
-#   2. Run 'kubeadm init' to bootstrap the cluster
-#   3. Register the output to capture the join command
-#   4. Store the join command as a fact (accessible to ALL hosts)
-#   5. Configure kubelet for the control plane
-#   6. Start kubelet service
+#   FIRST MASTER (run_once):
+#     1. Ensure prerequisites are in place
+#     2. Generate / retrieve the certificate key for --upload-certs
+#     3. Run 'kubeadm init' to bootstrap the cluster
+#     4. Capture the join command and certificate key
+#     5. Persist them to files for re-runs
+#
+#   ADDITIONAL MASTERS (run on rest):
+#     6. Retrieve the certificate key + join command from the first master
+#     7. Build the full join command with --control-plane --certificate-key
+#     8. Run 'kubeadm join --control-plane' to join the cluster
+#
+#   ALL MASTERS:
+#     9. Deploy kubelet configuration
+#    10. Start kubelet service
+#    11. Copy admin.conf for kubectl access
+#
+# =============================================================================
+# WHY run_once: true ON FIRST-MASTER TASKS
+# =============================================================================
+# When the play targets ALL control-plane hosts, run_once: true ensures
+# that 'kubeadm init' runs on exactly ONE node. All other hosts wait
+# for it to finish, guaranteeing that the cluster exists BEFORE any
+# additional master attempts to join.
+#
+# After the first master's init is complete, its set_fact values are
+# available via hostvars[groups['control-plane'][0]] for the rest of
+# the play.
+# =============================================================================
 #
 # =============================================================================
 # NEW ANSIBLE CONCEPTS INTRODUCED
@@ -77,7 +100,7 @@
 #   Running 'kubeadm init' again would fail or overwrite them.
 # =============================================================================
 
-- name: Check if cluster is already initialized
+- name: Check if node already has cluster certificates (idempotency)
   ansible.builtin.stat:
     path: /etc/kubernetes/pki/ca.crt
   register: cluster_ca_check
@@ -87,12 +110,12 @@
     - kubeadm
 
 # =============================================================================
-# TASK 3: Generate / retrieve certificate key for --upload-certs
+# FIRST MASTER ONLY (run_once) — Certificate key + kubeadm init + join command
 # =============================================================================
-# Additional masters need a certificate key to decrypt the uploaded
-# certificates. The key must be generated BEFORE kubeadm init and passed
-# via --certificate-key, so the upload uses the SAME key we store.
-# On first run we generate a new key; on re-runs we read from file.
+# These tasks run ONLY on the first control-plane node.
+# run_once: true ensures they execute exactly once; all other hosts wait
+# for completion before proceeding. This guarantees the cluster exists
+# BEFORE additional masters attempt to join.
 # =============================================================================
 
 - name: Check if certificate key file already exists (re-run)
@@ -162,14 +185,14 @@
     - multi-master
 
 # =============================================================================
-# TASK 4: Run kubeadm init with the certificate key
+# TASK: kubeadm init — FIRST MASTER ONLY
 # =============================================================================
 # We pass --certificate-key with the SAME key we generated/stored above,
 # ensuring that the uploaded certificates can be decrypted by additional
 # masters using the same key.
 # =============================================================================
 
-- name: Initialize Kubernetes cluster with kubeadm
+- name: Initialize Kubernetes cluster with kubeadm (FIRST MASTER ONLY)
   ansible.builtin.command:
     cmd: >-
       kubeadm init
@@ -188,7 +211,7 @@
   # ---------------------------------------------------------------------------
   # run_once: true
   #   This is CRITICAL. Without it, 'kubeadm init' would run on EVERY
-  #   host in the control-plane group. With 3 control-plane nodes in prod,
+  #   host in the control-plane group. With 3 control-plane nodes,
   #   you'd get 3 clusters instead of 1.
   # ---------------------------------------------------------------------------
   run_once: true
@@ -196,7 +219,7 @@
     - control-plane
     - kubeadm
 
-- name: Ensure kubeadm data directory exists
+- name: Ensure kubeadm data directory exists (FIRST MASTER)
   ansible.builtin.file:
     path: "{{ kubeadm_data_dir }}"
     state: directory
@@ -226,23 +249,14 @@
     - multi-master
 
 # =============================================================================
-# TASK 4: Extract the join command from kubeadm output
+# TASK: Generate join command — FIRST MASTER ONLY
 # =============================================================================
-# kubeadm init outputs a line starting with 'kubeadm join'.
-# We extract this line using a Jinja2 filter.
-#
-# Jinja2 filters used:
-#   | select('match', '^kubeadm join')
-#     Filters a list to only items matching a regex pattern.
-#   | first
-#     Takes the first (and hopefully only) item from the filtered list.
-#
-# Note about 'select':
-#   'select' is a Jinja2 TEST filter. It applies the TEST (match())
-#   to each element and keeps those where the TEST returns True.
+# kubeadm token create --print-join-command generates a worker join command
+# with a fresh bootstrap token. Additional masters will append
+# --control-plane --certificate-key=<key> to this command.
 # =============================================================================
 
-- name: Generate a clean join command string
+- name: Generate a clean join command string (FIRST MASTER ONLY)
   ansible.builtin.command: kubeadm token create --print-join-command
   register: generated_join_command
   changed_when: false
@@ -253,7 +267,7 @@
 
 - name: Store kubeadm join command as a fact
   ansible.builtin.set_fact:
-    kubeadm_join_command_raw: "{{ generated_join_command.stdout }}"
+    kubeadm_join_command_raw: "{{ generated_join_command.stdout | trim }}"
   run_once: true
   when:
     - generated_join_command.stdout is defined
@@ -261,17 +275,6 @@
   tags:
     - control-plane
     - kubeadm
-
-# =============================================================================
-# TASK 5: Write join command to a file (persistence)
-# =============================================================================
-# In-memory variables (set_fact) disappear when the playbook ends.
-# To be safe, we also write the join command to a FILE on the control plane.
-# This file persists across playbook runs.
-#
-# You can read it later with:
-#   ansible control-plane-01 -m fetch -a "src=/var/lib/kubeadm/join-command.txt dest=./"
-# =============================================================================
 
 - name: Write join command to persistent file
   ansible.builtin.copy:
@@ -288,11 +291,114 @@
     - kubeadm
 
 # =============================================================================
-# TASK 6: Deploy kubelet configuration for control plane
+# ADDITIONAL MASTERS ONLY — Retrieve join info + join the cluster
 # =============================================================================
-# kubelet needs to know it is a control-plane node.
-# We deploy a kubelet config template.
+# These tasks run ONLY on control-plane nodes that are NOT the first master.
+# They retrieve the certificate key and join command from the first master's
+# hostvars (or read from files as fallback), build the full join command
+# with --control-plane, and run kubeadm join --control-plane.
 # =============================================================================
+
+- name: Retrieve certificate key from first master hostvars
+  ansible.builtin.set_fact:
+    master_certificate_key: "{{ hostvars[groups['control-plane'][0]]['kubeadm_certificate_key_raw'] | default('') }}"
+  when:
+    - inventory_hostname != groups['control-plane'][0]
+  tags:
+    - control-plane
+    - multi-master
+
+- name: Fallback — read certificate key from file on first master
+  ansible.builtin.slurp:
+    src: "{{ kubeadm_cert_key_file }}"
+  delegate_to: "{{ groups['control-plane'][0] }}"
+  register: master_cert_key_file
+  when:
+    - inventory_hostname != groups['control-plane'][0]
+    - master_certificate_key | length == 0
+  tags:
+    - control-plane
+    - multi-master
+
+- name: Set certificate key from file if hostvars was empty
+  ansible.builtin.set_fact:
+    master_certificate_key: "{{ master_cert_key_file.content | b64decode | trim }}"
+  when:
+    - inventory_hostname != groups['control-plane'][0]
+    - master_cert_key_file.skipped is not defined
+    - master_cert_key_file.content is defined
+    - master_cert_key_file.content | length > 0
+  tags:
+    - control-plane
+    - multi-master
+
+- name: Retrieve join command from first master hostvars
+  ansible.builtin.set_fact:
+    master_join_command: "{{ hostvars[groups['control-plane'][0]]['kubeadm_join_command_raw'] | default('') }}"
+  when:
+    - inventory_hostname != groups['control-plane'][0]
+  tags:
+    - control-plane
+    - multi-master
+
+- name: Fallback — read join command from file on first master
+  ansible.builtin.slurp:
+    src: "{{ kubeadm_join_command_file }}"
+  delegate_to: "{{ groups['control-plane'][0] }}"
+  register: master_join_file
+  when:
+    - inventory_hostname != groups['control-plane'][0]
+    - master_join_command | length == 0
+  tags:
+    - control-plane
+    - multi-master
+
+- name: Set join command from file if hostvars was empty
+  ansible.builtin.set_fact:
+    master_join_command: "{{ master_join_file.content | b64decode | trim }}"
+  when:
+    - inventory_hostname != groups['control-plane'][0]
+    - master_join_file.skipped is not defined
+    - master_join_file.content is defined
+    - master_join_file.content | length > 0
+  tags:
+    - control-plane
+    - multi-master
+
+- name: Build full join command with --control-plane flag
+  ansible.builtin.set_fact:
+    master_full_join_command: "{{ master_join_command }} --control-plane --certificate-key={{ master_certificate_key }}"
+  when:
+    - inventory_hostname != groups['control-plane'][0]
+    - master_join_command | length > 0
+    - master_certificate_key | length > 0
+  tags:
+    - control-plane
+    - multi-master
+
+- name: Join the cluster as an additional master
+  ansible.builtin.command:
+    cmd: "{{ master_full_join_command }}"
+  become: true
+  when:
+    - inventory_hostname != groups['control-plane'][0]
+    - master_full_join_command is defined
+    - master_full_join_command | length > 0
+    - not cluster_ca_check.stat.exists
+  register: additional_master_join_result
+  changed_when: additional_master_join_result.rc == 0
+  tags:
+    - control-plane
+    - multi-master
+
+# =============================================================================
+# ALL MASTERS — kubelet configuration, service, admin.conf
+# =============================================================================
+# These tasks run on EVERY control-plane node (first AND additional).
+# They deploy the kubelet config, ensure the service is running, and
+# copy the admin kubeconfig for the ansible user.
+# =============================================================================
+
 - name: Ensure /etc/kubernetes/kubelet directory exists
   ansible.builtin.file:
     path: /etc/kubernetes/kubelet
@@ -302,7 +408,6 @@
     group: root
   become: true
 
-  
 - name: Deploy kubelet configuration for control plane
   ansible.builtin.template:
     src: kubelet-config.yaml.j2
@@ -314,12 +419,6 @@
     - control-plane
     - config
 
-# =============================================================================
-# TASK 7: Ensure kubelet is running
-# =============================================================================
-# After kubeadm init, kubelet needs to be restarted to pick up the new config.
-# =============================================================================
-
 - name: Ensure kubelet is running and enabled
   ansible.builtin.service:
     name: "{{ kubelet_service_name }}"
@@ -329,7 +428,6 @@
   tags:
     - control-plane
     - service
-
 
 - name: Ensure .kube directory exists for the regular user
   ansible.builtin.file:
@@ -349,21 +447,18 @@
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
   become: true
-  
+
 # =============================================================================
-# TASK 8: Display join command (informational)
-# =============================================================================
-# Show the join command in the Ansible output so you can see it.
-# This is a debugging/teaching task — in production you'd log it.
+# Display cluster status
 # =============================================================================
 
-- name: Display kubeadm join command
+- name: Display control-plane status
   ansible.builtin.debug:
     msg:
-      - "=== CLUSTER INITIALIZED ==="
-      - "Join command for workers:"
-      - "{{ kubeadm_join_command_raw | default('(already initialized — check /var/lib/kubeadm/join-command.txt)') }}"
-  run_once: true
+      - "=== CONTROL PLANE NODE READY ==="
+      - "Node: {{ ansible_hostname }}"
+      - "Role: {{ 'First master (initialized cluster)' if inventory_hostname == groups['control-plane'][0] else 'Additional master (joined cluster)' }}"
+      - "Join command for workers: {{ kubeadm_join_command_raw | default('(see /var/lib/kubeadm/join-command.txt on first master)') }}"
   tags:
     - control-plane
     - kubeadm

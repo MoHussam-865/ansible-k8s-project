@@ -4,7 +4,10 @@
 # Internal variables for the Calico CNI role.
 # =============================================================================
 
-# ---
-# No internal variables needed.
+---
+# The Calico manifest handles everything: CRDs, DaemonSet, RBAC, CNI config.
+# All configuration is done via the calico_manifest_version default variable.
+# The kubernetes_primary_master variable (set in defaults or group_vars) 
+# determines which node kubectl commands delegate to.
 # The Calico manifest handles everything: CRDs, DaemonSet, RBAC, CNI config.
 # All configuration is done via the calico_manifest_version default variable.

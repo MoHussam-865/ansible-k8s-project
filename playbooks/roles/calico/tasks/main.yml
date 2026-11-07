@@ -24,72 +24,61 @@
 #   - calico-kube-controllers Deployment (manages IPAM, policies, etc.)
 #   - RBAC roles, ServiceAccounts, ConfigMaps, and more
 #
-# The command only needs to run ONCE on the control-plane node.
+# The command only needs to run ONCE on the primary control-plane node.
+#
+# =============================================================================
+# WHY NO MANUAL API ENDPOINT INJECTION?
+# =============================================================================
+#
+# Older Calico guides recommended injecting KUBERNETES_SERVICE_HOST and
+# KUBERNETES_SERVICE_PORT environment variables into the calico-node
+# DaemonSet container specs. This is NOT needed in a properly configured
+# kubeadm cluster because:
+#
+#   1. Calico uses the in-cluster Kubernetes service (kubernetes.default.svc)
+#      via the Pod's ServiceAccount token — this works without any manual
+#      endpoint configuration.
+#
+#   2. The Kubernetes service (10.96.0.1:443) is routed by kube-proxy to
+#      the API servers through HAProxy. Injecting a direct master IP
+#      bypasses this abstraction and defeats HA.
+#
+#   3. kubeadm init was run with --control-plane-endpoint=HAProxy_IP:6443,
+#      so Calico's auto-detected endpoint already resolves correctly.
+#
+# The role simply:
+#   1. Applies the upstream Calico manifest
+#   2. Waits for the calico-node DaemonSet to be ready
+#   3. Displays the result
 # =============================================================================
 
 ---
-- name: Determine the actual API server endpoint
-  ansible.builtin.set_fact:
-    calico_api_host: "{{ hostvars[groups['control-plane'][0]]['ansible_facts']['default_ipv4']['address'] }}"
-    calico_api_port: "{{ kubernetes_api_port | default('6443') }}"
-  run_once: true
-  tags:
-    - calico
-
-# ============================================================================
-# The Calico manifest contains multiple YAML documents (Namespace,
-# ConfigMap, DaemonSet, RBAC, etc.).  Patching the offline file via
-# 'kubectl patch --local --type json' fails because the JSON patch is
-# applied to EVERY document in the file, and most resources don't have
-# a path like '/spec/template/spec/containers/0/env/-'.
-#
-# Strategy:
-#   1. Apply the upstream manifest as-is (creates all resources).
-#   2. Patch the *live* calico-node DaemonSet with the real API endpoint.
-#   3. The DaemonSet controller will roll out the change to all nodes.
-# ============================================================================
-
 - name: Install Calico network plugin via upstream manifest
   ansible.builtin.command: >
     kubectl apply --kubeconfig /etc/kubernetes/admin.conf -f
     https://raw.githubusercontent.com/projectcalico/calico/{{ calico_manifest_version }}/manifests/calico.yaml
   register: calico_install_result
-  changed_when: '"created" in calico_install_result.stdout or "configured" in calico_install_result.stdout'
+  changed_when:
+    - '"created" in calico_install_result.stdout or "configured" in calico_install_result.stdout'
   run_once: true
+  delegate_to: "{{ kubernetes_primary_master }}"
   tags:
     - calico
 
-- name: Inject real API server endpoint into calico-node DaemonSet (main container)
+- name: Wait for calico-node DaemonSet to be ready
   ansible.builtin.command: >
-    kubectl set env --kubeconfig /etc/kubernetes/admin.conf
+    kubectl wait --kubeconfig /etc/kubernetes/admin.conf
+    --for=condition=Available
     daemonset/calico-node -n kube-system
-    KUBERNETES_SERVICE_HOST={{ calico_api_host }}
-    KUBERNETES_SERVICE_PORT={{ calico_api_port }}
-  register: calico_env_patch
-  changed_when: '"updated" in calico_env_patch.stdout'
+    --timeout=120s
+  register: calico_wait_result
+  changed_when: false
   run_once: true
-  tags:
-    - calico
-
-- name: Inject real API server endpoint into install-cni init container
-  ansible.builtin.command:
-    cmd: >-
-      kubectl patch --kubeconfig /etc/kubernetes/admin.conf
-      daemonset/calico-node -n kube-system --type json
-      --patch='[{"op":"add","path":"/spec/template/spec/initContainers/1/env/-","value":{"name":"KUBERNETES_SERVICE_HOST","value":"{{ calico_api_host }}"}},{"op":"add","path":"/spec/template/spec/initContainers/1/env/-","value":{"name":"KUBERNETES_SERVICE_PORT","value":"{{ calico_api_port }}"}}]'
-  register: calico_init_patch
-  changed_when: '"patched" in calico_init_patch.stdout'
-  run_once: true
-  tags:
-    - calico
-
-- name: Restart calico-node DaemonSet to pick up env var changes
-  ansible.builtin.command: >
-    kubectl rollout restart --kubeconfig /etc/kubernetes/admin.conf
-    daemonset/calico-node -n kube-system
-  register: calico_restart
-  changed_when: '"restarted" in calico_restart.stdout'
-  run_once: true
+  delegate_to: "{{ kubernetes_primary_master }}"
+  # Retry in case the DaemonSet wasn't created yet right after apply
+  retries: 3
+  delay: 5
+  until: calico_wait_result.rc == 0
   tags:
     - calico
 

@@ -14,3 +14,15 @@
 #   kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/\
 #                     {{ calico_manifest_version }}/manifests/calico.yaml
 calico_manifest_version: "v3.25.0"
+
+# ---------------------------------------------------------------------------
+# Primary control-plane node — where one-time kubectl commands run
+# ---------------------------------------------------------------------------
+# This should match the hostname of the FIRST control-plane node (the one
+# that ran kubeadm init).  All kubectl apply / wait / rollout commands
+# in this role are delegated to this host.
+#
+# Override in group_vars/all.yml or inventory if your inventory hostnames
+# differ (e.g., master-1, cp-01, etc.).
+# ---------------------------------------------------------------------------
+kubernetes_primary_master: "{{ groups['control-plane'][0] | default('') }}"
