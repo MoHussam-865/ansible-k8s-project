@@ -28,14 +28,72 @@
 # =============================================================================
 
 ---
-- name: Install Calico network plugin via manifest
-  ansible.builtin.command: >
-    kubectl apply -f
-    https://raw.githubusercontent.com/projectcalico/calico/{{ calico_manifest_version }}/manifests/calico.yaml
-  environment:
-    KUBECONFIG: /etc/kubernetes/admin.conf
+- name: Determine the actual API server endpoint
+  ansible.builtin.set_fact:
+    calico_api_host: "{{ hostvars[groups['control-plane'][0]]['ansible_facts']['default_ipv4']['address'] }}"
+    calico_api_port: "{{ kubernetes_api_port | default('6443') }}"
+  run_once: true
+  tags:
+    - calico
+
+- name: Download Calico manifest
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_manifest_version }}/manifests/calico.yaml"
+    dest: /tmp/calico.yaml
+    mode: "0644"
+  run_once: true
+  tags:
+    - calico
+
+- name: Write JSON patch to inject API endpoint into calico-node DaemonSet
+  ansible.builtin.copy:
+    content: |
+      [
+        {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"KUBERNETES_SERVICE_HOST","value":"{{ calico_api_host }}"}},
+        {"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"KUBERNETES_SERVICE_PORT","value":"{{ calico_api_port }}"}},
+        {"op":"add","path":"/spec/template/spec/initContainers/0/env/-","value":{"name":"KUBERNETES_SERVICE_HOST","value":"{{ calico_api_host }}"}},
+        {"op":"add","path":"/spec/template/spec/initContainers/0/env/-","value":{"name":"KUBERNETES_SERVICE_PORT","value":"{{ calico_api_port }}"}}
+      ]
+    dest: /tmp/calico-api-patch.json
+    mode: "0644"
+  run_once: true
+  tags:
+    - calico
+
+- name: Patch calico-node DaemonSet with real API server endpoint
+  ansible.builtin.command:
+    cmd: kubectl patch --kubeconfig /etc/kubernetes/admin.conf --filename /tmp/calico.yaml --local --output yaml --type json --patch-file /tmp/calico-api-patch.json
+  register: calico_patched_manifest
+  run_once: true
+  tags:
+    - calico
+
+- name: Write patched manifest to file
+  ansible.builtin.copy:
+    content: "{{ calico_patched_manifest.stdout }}"
+    dest: /tmp/calico-patched.yaml
+    mode: "0644"
+  run_once: true
+  tags:
+    - calico
+
+- name: Install Calico network plugin via patched manifest
+  ansible.builtin.command:
+    cmd: kubectl apply --kubeconfig /etc/kubernetes/admin.conf -f /tmp/calico-patched.yaml
   register: calico_install_result
   changed_when: '"created" in calico_install_result.stdout or "configured" in calico_install_result.stdout'
+  run_once: true
+  tags:
+    - calico
+
+- name: Clean up temporary files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/calico.yaml
+    - /tmp/calico-patched.yaml
+    - /tmp/calico-api-patch.json
   run_once: true
   tags:
     - calico
