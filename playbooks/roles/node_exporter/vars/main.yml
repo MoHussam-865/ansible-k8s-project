@@ -3,18 +3,17 @@
 # =============================================================================
 # Internal (non-overridable) variables for the Node Exporter role.
 # =============================================================================
+#
+# The APT package 'prometheus-node-exporter' handles all of the following
+# automatically:
+#   - Creates the node_exporter system user
+#   - Installs the binary to /usr/bin/prometheus-node-exporter
+#   - Deploys and enables the systemd service
+#
+# These were previously managed manually in the tarball approach and are
+# removed since we now use the APT package.
+# =============================================================================
 
 ---
 
-# OS user and group that runs the node_exporter process
-node_exporter_user: node_exporter
-node_exporter_group: node_exporter
-
-# Absolute path to the binary after extraction
-node_exporter_binary: "{{ node_exporter_install_dir }}/node_exporter"
-
-# Download destination (temp file)
-node_exporter_download_dest: /tmp/node_exporter-{{ node_exporter_version }}.tar.gz
-
-# Extracted directory name inside the tarball
-node_exporter_archive_dir: node_exporter-{{ node_exporter_version }}.linux-amd64
+# (No custom vars needed — the APT package manages everything.)

@@ -3,12 +3,15 @@
 # =============================================================================
 # Handlers for the Node Exporter role.
 # =============================================================================
+#
+# No custom handlers are needed — the APT package's built-in systemd service
+# handles restarts and reloads automatically on package upgrades.
+#
+# Previous versions of this role used a manual tarball installation with a
+# "restart node_exporter" handler. That approach has been replaced with the
+# simpler APT-based installation.
+# =============================================================================
 
 ---
 
-- name: restart node_exporter
-  ansible.builtin.service:
-    name: "{{ node_exporter_service_name }}"
-    state: restarted
-  become: true
-  listen: "restart node_exporter"
+# (No handlers defined)

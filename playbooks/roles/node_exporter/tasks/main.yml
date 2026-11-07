@@ -8,113 +8,30 @@
 # Prometheus scrapes this endpoint to build a full cluster monitoring picture.
 #
 # Installation approach:
-#   Node Exporter is NOT available in standard Ubuntu APT repos.
-#   We download the pre-compiled binary from GitHub releases, extract it,
-#   and run it as a systemd service.
+#   Install the prometheus-node-exporter package from the standard Ubuntu APT
+#   repository (available since Ubuntu 22.04), enable and start its systemd
+#   service, then verify it is listening on port 9100.
 # =============================================================================
 
 ---
 
 # =============================================================================
-# TASK 1: Create node_exporter system user
+# TASK 1: Install Node Exporter via APT
 # =============================================================================
 
-- name: Create node_exporter system user
-  ansible.builtin.user:
-    name: "{{ node_exporter_user }}"
-    system: true
-    shell: /usr/sbin/nologin
-    create_home: false
+- name: Install prometheus-node-exporter package
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
     state: present
+    update_cache: true
   become: true
   when: run_node_exporter_role | bool
   tags:
     - node_exporter
-    - users
+    - install
 
 # =============================================================================
-# TASK 2: Download Node Exporter tarball
-# =============================================================================
-
-- name: Download Node Exporter tarball
-  ansible.builtin.get_url:
-    url: "{{ node_exporter_download_url }}"
-    dest: "{{ node_exporter_download_dest }}"
-    mode: "0644"
-  become: true
-  when: run_node_exporter_role | bool
-  tags:
-    - node_exporter
-    - download
-
-# =============================================================================
-# TASK 3: Extract Node Exporter tarball
-# =============================================================================
-
-- name: Extract Node Exporter tarball
-  ansible.builtin.unarchive:
-    src: "{{ node_exporter_download_dest }}"
-    dest: /tmp
-    remote_src: true
-    creates: "/tmp/{{ node_exporter_archive_dir }}/node_exporter"
-  become: true
-  when: run_node_exporter_role | bool
-  tags:
-    - node_exporter
-    - extract
-
-# =============================================================================
-# TASK 4: Copy binary to install directory
-# =============================================================================
-
-- name: Copy node_exporter binary to install directory
-  ansible.builtin.copy:
-    src: "/tmp/{{ node_exporter_archive_dir }}/node_exporter"
-    dest: "{{ node_exporter_binary }}"
-    mode: "0755"
-    owner: "{{ node_exporter_user }}"
-    group: "{{ node_exporter_group }}"
-    remote_src: true
-  become: true
-  notify: restart node_exporter
-  when: run_node_exporter_role | bool
-  tags:
-    - node_exporter
-    - binary
-
-# =============================================================================
-# TASK 5: Deploy systemd service unit
-# =============================================================================
-
-- name: Deploy Node Exporter systemd service
-  ansible.builtin.template:
-    src: node_exporter.service.j2
-    dest: /etc/systemd/system/{{ node_exporter_service_name }}.service
-    mode: "0644"
-    owner: root
-    group: root
-  become: true
-  notify: restart node_exporter
-  when: run_node_exporter_role | bool
-  tags:
-    - node_exporter
-    - service
-
-# =============================================================================
-# TASK 6: Reload systemd daemon (if service file changed)
-# =============================================================================
-
-- name: Reload systemd daemon
-  ansible.builtin.systemd:
-    daemon_reload: true
-  become: true
-  when: run_node_exporter_role | bool
-  tags:
-    - node_exporter
-    - service
-
-# =============================================================================
-# TASK 7: Enable and start Node Exporter service
+# TASK 2: Enable and start Node Exporter service
 # =============================================================================
 
 - name: Enable and start Node Exporter service
@@ -129,7 +46,7 @@
     - service
 
 # =============================================================================
-# TASK 8: Verify Node Exporter is listening
+# TASK 3: Verify Node Exporter is listening
 # =============================================================================
 
 - name: Wait for Node Exporter to be ready
