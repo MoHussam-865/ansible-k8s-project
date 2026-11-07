@@ -37,16 +37,16 @@
   post_tasks:
     - name: Display HAProxy configuration summary
       ansible.builtin.debug:
-        msg:
-          - "=== HAProxy Configuration ==="
-          - "Frontend: 0.0.0.0:{{ haproxy_frontend_port }}"
-          - "Backend:  {{ groups['control-plane'] | length }} control-plane node(s)"
-          - "Algorithm: {{ haproxy_balance_algorithm }}"
-          - "Mode:      {{ haproxy_mode }}"
-          - ""
-          - "Backend servers:"
-{% for host in groups['control-plane'] %}
-          - "  {{ host }}:{{ haproxy_backend_port }}"
-{% endfor %}
+        msg: |
+          === HAProxy Configuration ===
+          Frontend: 0.0.0.0:{{ haproxy_frontend_port }}
+          Backend:  {{ groups['control-plane'] | length }} control-plane node(s)
+          Algorithm: {{ haproxy_balance_algorithm }}
+          Mode:      {{ haproxy_mode }}
+          
+          Backend servers:
+          {% for host in groups['control-plane'] %}
+            {{ host }}:{{ haproxy_backend_port }}
+          {% endfor %}
       tags:
         - always
