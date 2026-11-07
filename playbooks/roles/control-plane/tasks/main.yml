@@ -219,16 +219,21 @@
     - kubeadm
 
 # =============================================================================
-# TASK: Extract certificate key for additional control-plane nodes
+# TASK: Generate certificate key for additional control-plane nodes
 # =============================================================================
-# kubeadm init --upload-certs generates a certificate key that additional
-# masters need to join with --control-plane --certificate-key=<key>.
-# We extract this key from the kubeadm output and store it as a fact
-# so additional masters can retrieve it via hostvars.
+# Additional masters need a certificate key to join with
+# --control-plane --certificate-key=<key>. This key is used to
+# decrypt the certificates that the first master uploads.
+#
+# kubeadm certs certificate-key generates a random key that can be
+# used with 'kubeadm init --upload-certs' or passed to the first
+# master's kubeadm configuration. We store this key as a fact so
+# additional masters can retrieve it via hostvars.
 # =============================================================================
 
 - name: Generate certificate key for additional masters
-  ansible.builtin.command: kubeadm init --print-certificate-key
+  ansible.builtin.command:
+    cmd: kubeadm certs certificate-key
   register: kubeadm_cert_key_result
   changed_when: false
   run_once: true
