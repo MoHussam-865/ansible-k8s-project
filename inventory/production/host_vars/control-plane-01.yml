@@ -1,22 +1,13 @@
-﻿# =============================================================================
-# inventory/production/host_vars/control-plane-01.yml
 # =============================================================================
-# Host variables apply ONLY to this single host.
-#
-# PRECEDENCE:
-#   host_vars has HIGHER precedence than group_vars.
-#
-# Use host_vars for truly unique settings:
-#   - Custom SSH ports
-#   - Unique interface names
-#   - Special kernel parameters for this specific machine
+# inventory/production/host_vars/control-plane-01.yml  [DEPRECATED]
+# =============================================================================
+# ⚠  DEPRECATION WARNING  ⚠
+# This file is kept as a rollback reference only.
+# ansible_host is now defined ONLY in the root hosts INI file.
+# Host-specific overrides like kubelet_node_type should be set via group_vars.
 # =============================================================================
 
 ---
-# The unique host identifier (ansible_host is already in hosts.yml)
-ansible_host: 10.1.0.10
+# ansible_host is removed — IP now comes from the root hosts file only.
+# ansible_host: 10.1.0.10
 kubelet_node_type: "control-plane"
-
-# In production, you might have different network interfaces
-# cluster_network_interface: "eth1"
-# management_interface: "eth0"

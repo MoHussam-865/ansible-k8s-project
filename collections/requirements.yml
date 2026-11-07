@@ -1,0 +1,27 @@
+# =============================================================================
+# collections/requirements.yml
+# =============================================================================
+# Ansible Collection dependencies required by this project.
+#
+# Install with:
+#   ansible-galaxy collection install -r collections/requirements.yml
+#
+# What each collection provides:
+#   ansible.posix         — profile_tasks & timer callbacks, POSIX utilities
+#   community.grafana     — Grafana API modules (for automating datasource config)
+#   community.general     — additional modules like ipa, ldap, etc.
+# =============================================================================
+
+---
+
+collections:
+  - name: ansible.posix
+    version: ">=1.5.0"
+
+  # Uncomment when you want to configure Grafana datasources via Ansible:
+  # - name: community.grafana
+  #   version: ">=1.6.0"
+
+  # Uncomment if you need additional general-purpose modules:
+  # - name: community.general
+  #   version: ">=7.0.0"

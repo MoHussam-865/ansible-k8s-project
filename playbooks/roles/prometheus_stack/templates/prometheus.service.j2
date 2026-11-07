@@ -1,0 +1,34 @@
+# =============================================================================
+# Prometheus systemd service unit
+# =============================================================================
+# Managed by Ansible — manual changes will be overwritten.
+# =============================================================================
+
+[Unit]
+Description=Prometheus Monitoring System
+Documentation=https://prometheus.io/docs/introduction/overview/
+After=network-online.target
+
+[Service]
+User={{ prometheus_user }}
+Group={{ prometheus_group }}
+Type=simple
+Restart=on-failure
+RestartSec=10s
+
+# Web interface / API
+ExecStart={{ prometheus_binary }} \
+  --config.file={{ prometheus_config_file }} \
+  --web.listen-address=0.0.0.0:{{ prometheus_port | default('9090') }} \
+  --web.systemd-socket \
+  --storage.tsdb.path={{ prometheus_data_dir }}
+
+# Security hardening
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateDevices=true
+ReadWritePaths={{ prometheus_data_dir }}
+
+[Install]
+WantedBy=multi-user.target

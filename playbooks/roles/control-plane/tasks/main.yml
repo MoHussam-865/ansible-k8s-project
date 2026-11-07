@@ -129,6 +129,7 @@
       kubeadm init
         --pod-network-cidr={{ kubeadm_pod_network_cidr }}
         --control-plane-endpoint={{ kubeadm_apiserver_endpoint }}
+        --upload-certs
   become: true
   when:
     - run_kubeadm_init | bool
@@ -176,17 +177,6 @@
   ansible.builtin.set_fact:
     kubeadm_join_command_raw: "{{ generated_join_command.stdout }}"
   run_once: true
-  tags:
-    - control-plane
-    - kubeadm
-    
-  # ---------------------------------------------------------------------------
-  # run_once: true
-  #   'set_fact' normally sets a fact PER HOST.
-  #   With 'run_once', we set it ONCE and it applies to the host that ran it.
-  #   Other hosts access it via hostvars[] as shown above.
-  # ---------------------------------------------------------------------------
-  run_once: true
   when:
     - kubeadm_init_result is defined
     - kubeadm_init_result.changed
@@ -227,6 +217,56 @@
   tags:
     - control-plane
     - kubeadm
+
+# =============================================================================
+# TASK: Extract certificate key for additional control-plane nodes
+# =============================================================================
+# kubeadm init --upload-certs generates a certificate key that additional
+# masters need to join with --control-plane --certificate-key=<key>.
+# We extract this key from the kubeadm output and store it as a fact
+# so additional masters can retrieve it via hostvars.
+# =============================================================================
+
+- name: Generate certificate key for additional masters
+  ansible.builtin.command: kubeadm init --print-certificate-key
+  register: kubeadm_cert_key_result
+  changed_when: false
+  run_once: true
+  when:
+    - run_kubeadm_init | bool
+    - not cluster_ca_check.stat.exists or kubeadm_init_result.changed
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
+
+- name: Store certificate key as a fact
+  ansible.builtin.set_fact:
+    kubeadm_certificate_key_raw: "{{ kubeadm_cert_key_result.stdout | default('') | trim }}"
+  run_once: true
+  when:
+    - kubeadm_cert_key_result is defined
+    - kubeadm_cert_key_result.stdout is defined
+    - kubeadm_cert_key_result.stdout | length > 0
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
+
+- name: Write certificate key to persistent file
+  ansible.builtin.copy:
+    content: "{{ kubeadm_certificate_key_raw }}"
+    dest: "{{ kubeadm_cert_key_file }}"
+    mode: "0600"
+  become: true
+  run_once: true
+  when:
+    - kubeadm_certificate_key_raw is defined
+    - kubeadm_certificate_key_raw | length > 0
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
 
 # =============================================================================
 # TASK 6: Deploy kubelet configuration for control plane

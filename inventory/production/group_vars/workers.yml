@@ -1,11 +1,8 @@
-﻿# =============================================================================
-# inventory/production/group_vars/workers.yml
 # =============================================================================
-# Variables in this file apply ONLY to hosts in the 'workers' group.
-#
-# PRECEDENCE:
-#   This file has HIGHER precedence than group_vars/all.yml.
-#   It has LOWER precedence than worker-01.yml and worker-02.yml.
+# inventory/production/group_vars/workers.yml  [DEPRECATED]
+# =============================================================================
+# ⚠  DEPRECATION WARNING  ⚠
+# Kept as rollback reference. Primary location is now: group_vars/workers.yml
 # =============================================================================
 
 ---
@@ -15,6 +12,6 @@ kubernetes_role: "worker"
 # Workers might need a different containerd config than control plane
 containerd_worker_config: true
 
-# How workers discover the control plane (set at runtime via register)
-control_plane_ip: "{{ hostvars['control-plane-01'].ansible_facts.default_ipv4.address }}"
+# How workers discover the control plane (through HAProxy, not a specific master)
+control_plane_ip: "{{ hostvars[groups['haproxy'][0]]['ansible_facts']['default_ipv4']['address'] | default('') }}"
 control_plane_port: 6443

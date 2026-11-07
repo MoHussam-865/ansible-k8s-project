@@ -198,3 +198,83 @@
       tags:
         - verify
         - readiness
+
+# =============================================================================
+# BLOCK 4: Verify monitoring services
+# =============================================================================
+# Check that the monitoring stack is running on applicable hosts:
+#   - Node Exporter on ALL cluster hosts
+#   - Prometheus and Grafana on the monitoring host
+# =============================================================================
+
+- name: Verify monitoring services
+  block:
+    - name: Check Node Exporter service status
+      ansible.builtin.service:
+        name: "{{ node_exporter_service_name | default('prometheus-node-exporter') }}"
+      register: node_exporter_status
+      failed_when:
+        - node_exporter_status.state != 'running'
+        - node_exporter_status.state != 'started'
+      ignore_errors: "{{ not verify_fail_on_error }}"
+      when: "'cluster' in group_names or 'control-plane' in group_names or 'workers' in group_names"
+      tags:
+        - verify
+        - monitoring
+
+    - name: Check Prometheus service status
+      ansible.builtin.service:
+        name: "{{ prometheus_service_name | default('prometheus') }}"
+      register: prometheus_status
+      failed_when:
+        - prometheus_status.state != 'running'
+        - prometheus_status.state != 'started'
+      ignore_errors: "{{ not verify_fail_on_error }}"
+      when: "'monitoring' in group_names"
+      tags:
+        - verify
+        - monitoring
+
+    - name: Check Grafana service status
+      ansible.builtin.service:
+        name: "{{ grafana_service_name | default('grafana-server') }}"
+      register: grafana_status
+      failed_when:
+        - grafana_status.state != 'running'
+        - grafana_status.state != 'started'
+      ignore_errors: "{{ not verify_fail_on_error }}"
+      when: "'monitoring' in group_names"
+      tags:
+        - verify
+        - monitoring
+
+  rescue:
+    - name: Monitoring check failed — collect diagnostics
+      ansible.builtin.shell:
+        cmd: |
+          echo "=== Monitoring Stack Status ===" &&
+          systemctl status prometheus-node-exporter --no-pager 2>&1 | head -10 &&
+          echo "" &&
+          systemctl status prometheus --no-pager 2>&1 | head -10 &&
+          echo "" &&
+          systemctl status grafana-server --no-pager 2>&1 | head -10
+      register: monitoring_diag
+      ignore_errors: true
+      tags:
+        - verify
+        - monitoring
+
+    - name: Display monitoring diagnostic information
+      ansible.builtin.debug:
+        msg: "{{ monitoring_diag.stdout_lines | default(['Monitoring diagnostics unavailable']) }}"
+      tags:
+        - verify
+        - monitoring
+
+  always:
+    - name: Monitoring verification complete
+      ansible.builtin.debug:
+        msg: "Monitoring verification finished on {{ ansible_hostname }}."
+      tags:
+        - verify
+        - monitoring

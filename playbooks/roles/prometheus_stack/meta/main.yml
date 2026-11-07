@@ -1,0 +1,35 @@
+# =============================================================================
+# roles/prometheus_stack/meta/main.yml
+# =============================================================================
+# Metadata and dependencies for the Prometheus Stack role.
+# =============================================================================
+
+---
+
+galaxy_info:
+  author: "DevOps Instructor"
+  description: "Install and configure Prometheus + Grafana monitoring stack"
+  license: "MIT"
+  min_ansible_version: "2.14.0"
+
+  platforms:
+    - name: Ubuntu
+      versions:
+        - "22.04"
+        - "24.04"
+
+  galaxy_tags:
+    - prometheus
+    - grafana
+    - monitoring
+    - metrics
+    - dashboards
+
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+# The Prometheus stack needs base OS prerequisites (common role).
+# ===========================================================================
+
+dependencies:
+  - role: common

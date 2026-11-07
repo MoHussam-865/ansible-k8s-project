@@ -1,0 +1,42 @@
+# =============================================================================
+# roles/prometheus_stack/defaults/main.yml
+# =============================================================================
+# Default variables for the Prometheus Stack role.
+# =============================================================================
+
+---
+
+# ---------------------------------------------------------------------------
+# Prometheus version and download settings
+# ---------------------------------------------------------------------------
+
+prometheus_version: "2.50.1"
+
+# Install and data directories
+prometheus_install_dir: /opt/prometheus
+prometheus_data_dir: /var/lib/prometheus
+prometheus_config_dir: /etc/prometheus
+
+# Download URL — official Prometheus GitHub releases
+prometheus_download_url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+
+# Port Prometheus listens on for its own web interface / API
+prometheus_port: 9090
+
+# ---------------------------------------------------------------------------
+# Grafana settings
+# ---------------------------------------------------------------------------
+
+grafana_port: 3000
+
+# Grafana APT repository — these are static defaults;
+# they can be overridden in group_vars/monitoring.yml.
+grafana_apt_key_url: "https://apt.grafana.com/gpg.key"
+grafana_apt_repo_url: "https://apt.grafana.com"
+
+# ---------------------------------------------------------------------------
+# Feature flags
+# ---------------------------------------------------------------------------
+
+run_prometheus_role: true
+run_grafana_role: true

@@ -1,0 +1,66 @@
+# =============================================================================
+# tests/test-smoke.yml
+# =============================================================================
+# Smoke test — validate basic connectivity, Python version, and core services.
+#
+# This is a QUICK health check that runs on ALL inventory hosts to confirm:
+#   1. SSH connectivity works
+#   2. Python is available (Ansible prerequisite)
+#   3. OS family and distribution
+#   4. Kernel version
+#   5. Available disk space (warning if < 1 GB)
+#   6. Memory (warning if < 1 GB)
+#
+# Usage:
+#   ansible-playbook tests/test-smoke.yml
+#
+# This test is SAFE to run on any environment — it's read-only.
+# =============================================================================
+
+---
+
+- name: Smoke test — connectivity and prerequisites
+  hosts: all
+  gather_facts: true
+  become: false
+  any_errors_fatal: false
+
+  tasks:
+    - name: Confirm Ansible can reach this host
+      ansible.builtin.ping:
+
+    - name: Show distribution info
+      ansible.builtin.debug:
+        msg:
+          - "Hostname:     {{ ansible_hostname }}"
+          - "OS Family:    {{ ansible_facts['os_family'] }}"
+          - "Distribution: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+          - "Kernel:       {{ ansible_facts['kernel'] }}"
+          - "Architecture: {{ ansible_facts['architecture'] }}"
+          - "Python:       {{ ansible_facts['python']['version']['major'] }}.{{ ansible_facts['python']['version']['minor'] }}"
+          - "Groups:       {{ group_names | join(', ') }}"
+
+    - name: Warn if free disk space is low
+      ansible.builtin.debug:
+        msg: "WARNING: Free disk space on / is {{ item.size_available | human_readable }} (below 1 GB threshold)"
+      loop: "{{ ansible_facts['mounts'] }}"
+      when:
+        - item.mount == '/'
+        - item.size_available < 1073741824
+
+    - name: Warn if available memory is low
+      ansible.builtin.debug:
+        msg: "WARNING: Available memory is {{ ansible_facts['memfree_mb'] }} MB (below 1024 MB threshold)"
+      when: ansible_facts['memfree_mb'] | default(0) < 1024
+
+- name: Smoke test — group membership verification
+  hosts: all
+  gather_facts: false
+  become: false
+
+  tasks:
+    - name: Verify host belongs to expected groups
+      ansible.builtin.debug:
+        msg: "Host {{ inventory_hostname }} is in groups: {{ group_names | join(', ') }}"
+      tags:
+        - groups

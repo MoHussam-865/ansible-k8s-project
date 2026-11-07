@@ -1,4 +1,12 @@
-﻿---
-# Worker-02 specific variables
-ansible_host: 10.1.0.6
+# =============================================================================
+# inventory/production/host_vars/worker-02.yml  [DEPRECATED]
+# =============================================================================
+# ⚠  DEPRECATION WARNING  ⚠
+# This file is kept as a rollback reference only.
+# ansible_host is now defined ONLY in the root hosts INI file.
+# =============================================================================
+
+---
+# ansible_host is removed — IP now comes from the root hosts file only.
+# ansible_host: 10.1.0.6
 kubelet_node_type: "worker"

@@ -1,0 +1,100 @@
+# =============================================================================
+# playbooks/monitoring.yml
+# =============================================================================
+# Monitoring playbook — install Prometheus Node Exporter + Prometheus + Grafana.
+#
+# Purpose:
+#   Deploy the full monitoring stack for the Kubernetes cluster:
+#   1. Node Exporter on ALL Kubernetes nodes (collects system metrics)
+#   2. Prometheus on the monitoring node (stores + queries metrics)
+#   3. Grafana on the monitoring node (visualizes metrics)
+#
+# Execution order:
+#   Play 1: Install node_exporter on ALL cluster nodes
+#     This runs FIRST so that Prometheus has targets to scrape when it starts.
+#     It also gathers facts for all cluster hosts, which Play 2 uses to build
+#     the Prometheus scrape configuration.
+#
+#   Play 2: Install Prometheus + Grafana on the monitoring node
+#     Prometheus is configured to scrape all cluster node_exporter endpoints
+#     and itself. Grafana is pre-configured with Prometheus as a datasource.
+#
+# Usage:
+#   ansible-playbook playbooks/monitoring.yml
+# =============================================================================
+
+---
+
+# =============================================================================
+# PLAY 1: Install Node Exporter on ALL Kubernetes nodes
+# =============================================================================
+# Targets both control-plane and worker nodes via the 'cluster' parent group.
+# Node Exporter exposes system metrics (CPU, memory, disk, network) on
+# port 9100, which Prometheus will scrape.
+# =============================================================================
+
+- name: Play 1 — Install Node Exporter on all Kubernetes nodes
+  hosts: cluster
+  gather_facts: true
+  become: true
+
+  pre_tasks:
+    - name: Display provisioning target
+      ansible.builtin.debug:
+        msg: "Installing Node Exporter on {{ ansible_hostname }} ({{ kubernetes_role | default('node') }})."
+      tags:
+        - always
+
+  roles:
+    - role: node_exporter
+      tags:
+        - node_exporter
+
+  post_tasks:
+    - name: Node Exporter installed
+      ansible.builtin.debug:
+        msg: "Node Exporter installed on {{ ansible_hostname }} — metrics available on port {{ node_exporter_port }}."
+      tags:
+        - always
+
+# =============================================================================
+# PLAY 2: Install Prometheus + Grafana on monitoring node
+# =============================================================================
+# Uses hostvars cached from Play 1 to build the Prometheus scrape config.
+# Prometheus listens on port {{ prometheus_port }}.
+# Grafana listens on port {{ grafana_port }}.
+# =============================================================================
+
+- name: Play 2 — Install Prometheus and Grafana on monitoring node
+  hosts: monitoring
+  gather_facts: true
+  become: true
+
+  pre_tasks:
+    - name: Display provisioning target
+      ansible.builtin.debug:
+        msg: "Configuring {{ ansible_hostname }} as the Prometheus + Grafana monitoring server."
+      tags:
+        - always
+
+  roles:
+    - role: prometheus_stack
+      tags:
+        - prometheus
+        - grafana
+
+  post_tasks:
+    - name: Display monitoring stack summary
+      ansible.builtin.debug:
+        msg:
+          - "=== Monitoring Stack Deployed ==="
+          - "Prometheus:  http://{{ ansible_facts['default_ipv4']['address'] }}:{{ prometheus_port }}"
+          - "Grafana:     http://{{ ansible_facts['default_ipv4']['address'] }}:{{ grafana_port }}"
+          - ""
+          - "Scraping {{ groups['cluster'] | length }} cluster nodes via Node Exporter."
+          - ""
+          - "To access Grafana from your browser:"
+          - "  http://{{ ansible_facts['default_ipv4']['address'] }}:{{ grafana_port }}"
+          - "  Default credentials: admin / admin"
+      tags:
+        - always

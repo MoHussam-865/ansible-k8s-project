@@ -1,0 +1,13 @@
+# =============================================================================
+# roles/haproxy/handlers/main.yml
+# =============================================================================
+# Handlers for the HAProxy role.
+# =============================================================================
+
+---
+- name: restart haproxy
+  ansible.builtin.service:
+    name: "{{ haproxy_service_name }}"
+    state: restarted
+  become: true
+  listen: "restart haproxy"

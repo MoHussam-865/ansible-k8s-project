@@ -1,0 +1,12 @@
+# =============================================================================
+# roles/haproxy/vars/main.yml
+# =============================================================================
+# Internal variables for the HAProxy role.
+# =============================================================================
+
+---
+# HAProxy systemd service name
+haproxy_service_name: haproxy
+
+# HAProxy configuration path
+haproxy_config_path: /etc/haproxy/haproxy.cfg

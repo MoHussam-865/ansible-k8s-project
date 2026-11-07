@@ -1,0 +1,21 @@
+# =============================================================================
+# roles/prometheus_stack/handlers/main.yml
+# =============================================================================
+# Handlers for the Prometheus Stack role.
+# =============================================================================
+
+---
+
+- name: restart prometheus
+  ansible.builtin.service:
+    name: "{{ prometheus_service_name }}"
+    state: restarted
+  become: true
+  listen: "restart prometheus"
+
+- name: restart grafana
+  ansible.builtin.service:
+    name: "{{ grafana_service_name }}"
+    state: restarted
+  become: true
+  listen: "restart grafana"

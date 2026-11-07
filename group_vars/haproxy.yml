@@ -1,0 +1,25 @@
+# =============================================================================
+# group_vars/haproxy.yml (root level)
+# =============================================================================
+# Variables in this file apply ONLY to hosts in the 'haproxy' group.
+# =============================================================================
+
+---
+# HAProxy frontend port — the port that workers and kubectl use
+# to reach the Kubernetes API (load-balanced across all masters)
+haproxy_frontend_port: 6443
+
+# Backend port — the port kubelet listens on on control-plane nodes
+haproxy_backend_port: 6443
+
+# HAProxy mode: tcp = Layer 4 proxy (not HTTP)
+# Kubernetes API uses HTTPS/TCP; mode tcp avoids TLS termination complexity
+haproxy_mode: tcp
+
+# Load distribution algorithm
+haproxy_balance_algorithm: roundrobin
+
+# Timeouts
+haproxy_timeout_connect: 10s
+haproxy_timeout_client: 1m
+haproxy_timeout_server: 1m

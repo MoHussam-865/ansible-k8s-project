@@ -1,0 +1,52 @@
+# =============================================================================
+# playbooks/haproxy.yml
+# =============================================================================
+# HAProxy playbook — install and configure HAProxy as a TCP load balancer.
+#
+# Purpose:
+#   Deploy HAProxy on the 'haproxy' group to load-balance Kubernetes API
+#   requests across all control-plane nodes. Workers and kubectl clients
+#   connect to HAProxy on port 6443 instead of a specific master IP.
+#
+# Usage:
+#   ansible-playbook playbooks/haproxy.yml
+#
+# Execution order:
+#   This playbook MUST run BEFORE kubernetes-cluster.yml so that HAProxy
+#   is available when the first master runs kubeadm init.
+# =============================================================================
+
+---
+- name: Install and configure HAProxy load balancer
+  hosts: haproxy
+  gather_facts: true
+  become: true
+
+  pre_tasks:
+    - name: Display provisioning target
+      ansible.builtin.debug:
+        msg: "Configuring {{ ansible_hostname }} as the HAProxy load balancer for Kubernetes API."
+      tags:
+        - always
+
+  roles:
+    - role: haproxy
+      tags:
+        - haproxy
+
+  post_tasks:
+    - name: Display HAProxy configuration summary
+      ansible.builtin.debug:
+        msg:
+          - "=== HAProxy Configuration ==="
+          - "Frontend: 0.0.0.0:{{ haproxy_frontend_port }}"
+          - "Backend:  {{ groups['control-plane'] | length }} control-plane node(s)"
+          - "Algorithm: {{ haproxy_balance_algorithm }}"
+          - "Mode:      {{ haproxy_mode }}"
+          - ""
+          - "Backend servers:"
+{% for host in groups['control-plane'] %}
+          - "  {{ host }}:{{ haproxy_backend_port }}"
+{% endfor %}
+      tags:
+        - always

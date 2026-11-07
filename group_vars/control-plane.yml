@@ -1,0 +1,27 @@
+# =============================================================================
+# group_vars/control-plane.yml (root level)
+# =============================================================================
+# Variables in this file apply ONLY to hosts in the 'control-plane' group.
+# =============================================================================
+
+---
+# The role this node plays in the Kubernetes cluster
+kubernetes_role: "control-plane"
+
+# kubeadm init options for the control plane
+kubeadm_init_options: "--pod-network-cidr={{ pod_network_cidr }}"
+
+# The version of Kubernetes to install on the control plane
+kubernetes_control_plane_version: "{{ kubernetes_version }}"
+
+# ---------------------------------------------------------------------------
+# Control plane endpoint — workers and additional masters reach the API
+# through HAProxy, not directly at a specific master's IP.
+# This is set in Phase 3 when HAProxy is deployed.
+# ---------------------------------------------------------------------------
+# IP that workers use to reach the Kubernetes API (HAProxy frontend)
+control_plane_ip: "{{ hostvars[groups['haproxy'][0]]['ansible_facts']['default_ipv4']['address'] | default('') }}"
+control_plane_endpoint: "{{ control_plane_ip }}:{{ kubernetes_api_port | default('6443') }}"
+
+# Port for kubeadm init (default: 6443 for the API)
+kubernetes_api_port: 6443

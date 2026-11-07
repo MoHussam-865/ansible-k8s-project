@@ -1,19 +1,34 @@
 # =============================================================================
 # hosts  — Ansible inventory file (project root)
 # =============================================================================
-# Group names mirror the project inventory (inventory/production/hosts.yml):
-#   all > cluster > control-plane
-#                > workers
+# This is the SINGLE source of truth for the inventory.
+# Terraform generates this file with dynamic IPs.
 #
-# Ansible connects via SSH using the 'ansible' user (see ansible.cfg).
+# Group hierarchy:
+#   all
+#   ├── cluster                    # All Kubernetes nodes (parent group)
+#   │   ├── control-plane          # N control-plane nodes (masters)
+#   │   └── workers                # N worker nodes
+#   ├── haproxy                    # HAProxy load balancer node(s)
+#   └── monitoring                 # Prometheus + Grafana server(s)
+#
+# Ansible connects via SSH using the user set in ansible.cfg (remote_user).
 # Hostname (inventory alias) | ansible_host (IP to SSH into)
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
 # control-plane  — Kubernetes master node(s)
 # -----------------------------------------------------------------------------
+# First master bootstraps the cluster (kubeadm init).
+# Additional masters join with --control-plane flag.
+# All serve the Kubernetes API on port 6443.
+# -----------------------------------------------------------------------------
 [control-plane]
+# control-plane-01 is the FIRST master (kubeadm init)
 control-plane-01 ansible_host=10.1.0.10
+# Additional masters (kubeadm join --control-plane)
+control-plane-02 ansible_host=10.1.0.11
+control-plane-03 ansible_host=10.1.0.12
 
 # -----------------------------------------------------------------------------
 # workers  — Kubernetes worker nodes
@@ -21,6 +36,24 @@ control-plane-01 ansible_host=10.1.0.10
 [workers]
 worker-01 ansible_host=10.1.0.8
 worker-02 ansible_host=10.1.0.6
+
+# -----------------------------------------------------------------------------
+# haproxy  — HAProxy load balancer node(s)
+# -----------------------------------------------------------------------------
+# TCP load balancer for the Kubernetes API (:6443).
+# Distributes API requests across all control-plane nodes.
+# -----------------------------------------------------------------------------
+[haproxy]
+haproxy-01 ansible_host=10.1.0.20
+
+# -----------------------------------------------------------------------------
+# monitoring  — Prometheus + Grafana server(s)
+# -----------------------------------------------------------------------------
+# Prometheus collects metrics from all cluster nodes.
+# Grafana provides dashboards for visualization.
+# -----------------------------------------------------------------------------
+[monitoring]
+monitoring-01 ansible_host=10.1.0.30
 
 # -----------------------------------------------------------------------------
 # cluster  — parent group of ALL kubernetes nodes (matches project hierarchy)

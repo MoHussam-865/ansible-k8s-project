@@ -1,20 +1,73 @@
 ﻿# =============================================================================
 # group_vars/all.yml (root level)
 # =============================================================================
-# This is an ALTERNATIVE location for group_vars.
-# Ansible searches in this order when inventory is a DIRECTORY:
-#   1. inventory/<env>/group_vars/      (highest precedence among group vars)
-#   2. group_vars/ (root level)          (lower precedence)
+# Variables defined here apply to EVERY host in the inventory.
+# This is the PRIMARY group_vars location when using a file-based inventory
+# (ansible.cfg -> inventory = ./hosts).
 #
-# Why have both?
-#   - inventory/<env>/group_vars/  = per-environment variables (the normal place)
-#   - group_vars/ (root)           = fallback defaults shared across all envs
-#
-# In practice, most teams put everything in inventory/<env>/group_vars/.
-# This root group_vars/ exists as a safety net for shared defaults.
+# No fallback to inventory/production/ — the root hosts file is the source.
+# The inventory/production/ directory is kept as a deprecated reference only.
 # =============================================================================
 
 ---
-# If a variable is NOT defined in inventory/production/group_vars/all.yml
-# but IS defined here, Ansible will find it here.
-# This allows sharing defaults across production/staging/dev.
+# Kubernetes Version Settings
+# ============================================================
+kubernetes_release: "v1.37"
+kubernetes_version: "stable"
+
+# Container Runtime
+containerd_install_method: "apt"
+containerd_version: "1.7.6"
+containerd_package: "containerd.io"
+
+# Network Settings
+pod_network_cidr: "10.0.0.0/16"
+
+# Kubernetes API endpoint — dynamically resolved from the first control-plane node.
+# Uses hostvars cross-group reference with groups[] index instead of hardcoded hostname.
+kubernetes_api_endpoint: "{{ hostvars[groups['control-plane'][0]]['ansible_facts']['default_ipv4']['address'] }}"
+
+# Kubernetes OS user
+kubernetes_user: "root"
+
+# Common packages
+common_packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - software-properties-common
+  - python3-pip
+  - gnupg
+  - lsb-release
+  - htop
+  - net-tools
+  - chrony
+  - wget
+
+# Kernel Modules
+k8s_kernel_modules:
+  - overlay
+  - br_netfilter
+  - ip_vs
+  - ip_vs_rr
+  - ip_vs_wrr
+  - ip_vs_nq
+  - ip_vs_lblc
+  - ip_vs_lblcr
+  - ip_vs_ftp
+  - xt_connmark
+
+# sysctl Parameters
+k8s_sysctl_settings:
+  net.ipv4.ip_forward: 1
+  net.bridge.bridge-nf-call-iptables: 1
+  net.ipv4.conf.all.rp_filter: 1
+  net.core.somaxconn: 1024
+  fs.file-max: 2097152
+  vm.overcommit_memory: 1
+  vm.swappiness: 10
+
+# Feature Flags
+run_common_role: true
+run_containerd_role: true
+run_kubernetes_role: true

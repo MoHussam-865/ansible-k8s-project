@@ -1,0 +1,65 @@
+# =============================================================================
+# roles/haproxy/tasks/main.yml
+# =============================================================================
+# Install and configure HAProxy as a TCP load balancer for the Kubernetes API.
+#
+# HAProxy runs in TCP mode (Layer 4) and distributes incoming connections
+# across all control-plane nodes. The backend server list is dynamically
+# generated from groups['control-plane'] in the inventory.
+#
+# =============================================================================
+# WHAT THIS ROLE DOES
+# =============================================================================
+#   1. Install haproxy package via apt
+#   2. Deploy the HAProxy configuration template
+#   3. Ensure the service is running and enabled on boot
+# =============================================================================
+
+---
+# =============================================================================
+# TASK 1: Install HAProxy
+# =============================================================================
+- name: Install HAProxy
+  ansible.builtin.apt:
+    name: haproxy
+    state: present
+  become: true
+  when: run_haproxy_role | bool
+  tags:
+    - haproxy
+    - packages
+
+# =============================================================================
+# TASK 2: Deploy HAProxy configuration
+# =============================================================================
+# The template loops over groups['control-plane'] to build backend server
+# entries dynamically. Each backend server is the control-plane node's
+# default IPv4 address on port 6443.
+# =============================================================================
+- name: Deploy HAProxy configuration
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    mode: "0644"
+    owner: root
+    group: root
+  become: true
+  notify: restart haproxy
+  when: run_haproxy_role | bool
+  tags:
+    - haproxy
+    - config
+
+# =============================================================================
+# TASK 3: Ensure HAProxy is running and enabled
+# =============================================================================
+- name: Ensure HAProxy service is running and enabled
+  ansible.builtin.service:
+    name: "{{ haproxy_service_name }}"
+    state: started
+    enabled: "{{ haproxy_service_enabled }}"
+  become: true
+  when: run_haproxy_role | bool
+  tags:
+    - haproxy
+    - service

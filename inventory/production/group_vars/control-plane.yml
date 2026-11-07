@@ -1,15 +1,8 @@
-﻿# =============================================================================
-# inventory/production/group_vars/control-plane.yml
 # =============================================================================
-# Variables in this file apply ONLY to hosts in the 'control-plane' group.
-#
-# PRECEDENCE:
-#   This file has HIGHER precedence than group_vars/all.yml because
-#   "control-plane" is a MORE SPECIFIC group than "all".
-#   More specific group -> higher precedence.
-#
-#   It has LOWER precedence than host_vars/control-plane-01.yml because
-#   host_vars are MORE SPECIFIC than group_vars (host > group).
+# inventory/production/group_vars/control-plane.yml  [DEPRECATED]
+# =============================================================================
+# ⚠  DEPRECATION WARNING  ⚠
+# Kept as rollback reference. Primary location is now: group_vars/control-plane.yml
 # =============================================================================
 
 ---
@@ -23,8 +16,8 @@ kubeadm_init_options: "--pod-network-cidr={{ pod_network_cidr }}"
 kubernetes_control_plane_version: "{{ kubernetes_version }}"
 
 # IP or hostname that workers use to reach the control plane
-# By default we use the ansible host IP (the management IP)
-control_plane_ip: "{{ ansible_facts['default_ipv4']['address'] }}"
+# Updated to use dynamic groups[] lookup instead of hardcoded hostname
+control_plane_ip: "{{ hostvars[groups['control-plane'][0]]['ansible_facts']['default_ipv4']['address'] }}"
 
 # Port for kubeadm init (default: 6443 for the API)
 kubernetes_api_port: 6443

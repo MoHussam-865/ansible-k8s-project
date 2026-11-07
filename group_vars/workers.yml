@@ -1,0 +1,20 @@
+# =============================================================================
+# group_vars/workers.yml (root level)
+# =============================================================================
+# Variables in this file apply ONLY to hosts in the 'workers' group.
+# =============================================================================
+
+---
+# The role this node plays
+kubernetes_role: "worker"
+
+# Workers might need a different containerd config than control plane
+containerd_worker_config: true
+
+# ---------------------------------------------------------------------------
+# How workers discover the control plane.
+# Workers reach the Kubernetes API through HAProxy, not a specific master.
+# This is the load-balanced endpoint that distributes across all masters.
+# ---------------------------------------------------------------------------
+control_plane_ip: "{{ hostvars[groups['haproxy'][0]]['ansible_facts']['default_ipv4']['address'] | default('') }}"
+control_plane_port: 6443

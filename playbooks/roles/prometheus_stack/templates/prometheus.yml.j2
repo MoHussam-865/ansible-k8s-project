@@ -1,0 +1,49 @@
+# =============================================================================
+# Prometheus configuration — managed by Ansible
+# =============================================================================
+# This configures Prometheus to:
+#   1. Serve its own web interface on port {{ prometheus_port | default('9090') }}
+#   2. Scrape all Kubernetes cluster node_exporter endpoints
+#   3. Scrape its own metrics for self-monitoring
+# =============================================================================
+
+global:
+  scrape_interval: {{ prometheus_scrape_interval | default('15s') }}
+  evaluation_interval: 15s
+
+# =============================================================================
+# Rule files — Prometheus loads ALL .yml/.yaml files from this directory
+# =============================================================================
+
+rule_files: []
+
+# =============================================================================
+# Scrape configs — the targets Prometheus pulls metrics from
+# =============================================================================
+
+scrape_configs:
+
+  # ---------------------------------------------------------------------------
+  # Self-monitoring: Prometheus scrapes its own metrics
+  # ---------------------------------------------------------------------------
+  - job_name: "prometheus-self"
+    scrape_interval: 5s
+    static_targets:
+      - targets:
+          - "localhost:{{ prometheus_port | default('9090') }}"
+        labels:
+          group: "monitoring"
+          host: "{{ ansible_facts['hostname'] | default('localhost') }}"
+
+  # ---------------------------------------------------------------------------
+  # Kubernetes cluster nodes: scrape Node Exporter on every cluster node
+  # ---------------------------------------------------------------------------
+  - job_name: "kubernetes-cluster"
+    scrape_interval: {{ prometheus_scrape_interval | default('15s') }}
+    static_targets:
+      - targets:
+{% for target in prometheus_scrape_targets | default([]) %}
+          - "{{ target }}"
+{% endfor %}
+        labels:
+          group: "kubernetes-cluster"

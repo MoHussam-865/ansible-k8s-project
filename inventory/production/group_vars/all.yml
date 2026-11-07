@@ -1,34 +1,22 @@
 ﻿# =============================================================================
-# inventory/production/group_vars/all.yml
+# inventory/production/group_vars/all.yml  [DEPRECATED]
 # =============================================================================
-# Variables defined here apply to EVERY host in the inventory.
-# This is the default location for environment-wide settings.
+# ⚠  DEPRECATION WARNING  ⚠
+# This directory is kept as a rollback reference only.
+# The primary inventory source is now: ./hosts (INventory file at project root)
+# Primary group_vars are at: group_vars/*.yml (root level)
 #
-# When Ansible loads the inventory directory, it AUTOMATICALLY reads ALL
-# files matching the pattern:  group_vars/*.yml
-# So this file (all.yml) plus control-plane.yml, workers.yml are all loaded
-# automatically every time a playbook runs.
+# Ansible.cfg now points to: inventory = ./hosts
+# This directory (inventory/production/) is NO LONGER loaded by default.
 #
-# PRECEDENCE (this file's place):
-#   This is a GROUP variable file under the 'all' group.
-#   It has LOWER precedence than host_vars/ and group_vars/ for specific
-#   groups (control-plane, workers), but HIGHER precedence than role
-#   defaults/ and vars/.
+# To restore old behavior:
+#   ansible.cfg  →  inventory = inventory/production/
 #
-# PRECEDENCE QUICK REFERENCE (highest to lowest):
-#   1. Extra vars (-e on command line)
-#   2. Registered vars / set_fact
-#   3. Play vars / include_vars
-#   4. host_vars/<hostname>.yml
-#   5. group_vars/<groupname>.yml  (MORE specific group = higher)
-#   6. group_vars/all.yml          # YOU ARE HERE
-#   7. Role vars/main.yml
-#   8. Role defaults/main.yml
+# Remove this file once the new hosts file is verified working.
 # =============================================================================
 
 ---
 # Kubernetes Version Settings
-# ============================================================
 kubernetes_release: "v1.37"
 kubernetes_version: "stable"
 
@@ -39,17 +27,14 @@ containerd_package: "containerd.io"
 
 # Network Settings
 pod_network_cidr: "10.0.0.0/16"
-kubernetes_api_endpoint: "{{ hostvars['control-plane-01']['ansible_facts']['default_ipv4']['address'] }}"
+
+# Kubernetes API endpoint — dynamically resolved from the first control-plane node
+kubernetes_api_endpoint: "{{ hostvars[groups['control-plane'][0]]['ansible_facts']['default_ipv4']['address'] }}"
 
 # Kubernetes OS user
 kubernetes_user: "root"
 
 # Common packages
-# NOTE: 'ntpdate' is deprecated and has been REMOVED from modern Ubuntu
-# repositories, so it cannot be installed anymore. It has been replaced by
-# 'chrony' — a daemon that keeps node clocks synced continuously (a one-shot
-# tool like ntpdate is useless in a cluster anyway).
-# See roles/common/tasks/main.yml — TASK 3 — for why time sync matters to K8s.
 common_packages:
   - apt-transport-https
   - ca-certificates
@@ -73,9 +58,7 @@ k8s_kernel_modules:
   - ip_vs_nq
   - ip_vs_lblc
   - ip_vs_lblcr
-  
   - ip_vs_ftp
-  
   - xt_connmark
 
 # sysctl Parameters

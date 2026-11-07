@@ -21,7 +21,7 @@ kubectl_binary: /usr/bin/kubectl
 verify_control_plane_host: "{{ groups['control-plane'][0] }}"
 
 # ---------------------------------------------------------------------------
-# Service check list
+# Service check list — services to verify on each host group
 # ---------------------------------------------------------------------------
 
 verify_services:
@@ -29,3 +29,9 @@ verify_services:
     host_group: all
   - name: kubelet
     host_group: all
+  - name: "{{ node_exporter_service_name | default('prometheus-node-exporter') }}"
+    host_group: cluster
+  - name: "{{ prometheus_service_name | default('prometheus') }}"
+    host_group: monitoring
+  - name: "{{ grafana_service_name | default('grafana-server') }}"
+    host_group: monitoring

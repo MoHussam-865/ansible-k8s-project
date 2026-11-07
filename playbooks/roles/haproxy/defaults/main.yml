@@ -1,0 +1,41 @@
+# =============================================================================
+# roles/haproxy/defaults/main.yml
+# =============================================================================
+# Default variables for the HAProxy role.
+# =============================================================================
+
+---
+# ---------------------------------------------------------------------------
+# HAProxy frontend settings
+# ---------------------------------------------------------------------------
+
+# Port HAProxy listens on for incoming Kubernetes API requests
+haproxy_frontend_port: 6443
+
+# Backend port — the port kubelet listens on on control-plane nodes
+haproxy_backend_port: 6443
+
+# HAProxy mode: tcp = Layer 4 proxy (not HTTP)
+# Kubernetes API uses HTTPS/TCP; mode tcp avoids TLS termination complexity
+haproxy_mode: tcp
+
+# Load distribution algorithm (roundrobin, leastconn, source)
+haproxy_balance_algorithm: roundrobin
+
+# ---------------------------------------------------------------------------
+# Timeout settings
+# ---------------------------------------------------------------------------
+
+haproxy_timeout_connect: 10s
+haproxy_timeout_client: 1m
+haproxy_timeout_server: 1m
+
+# ---------------------------------------------------------------------------
+# Feature flags
+# ---------------------------------------------------------------------------
+
+# Whether to install and configure HAProxy
+run_haproxy_role: true
+
+# Whether to enable the HAProxy service on boot
+haproxy_service_enabled: true

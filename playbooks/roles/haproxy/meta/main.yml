@@ -1,0 +1,33 @@
+# =============================================================================
+# roles/haproxy/meta/main.yml
+# =============================================================================
+# Metadata and dependencies for the HAProxy role.
+# =============================================================================
+
+---
+galaxy_info:
+  author: "DevOps Instructor"
+  description: "Install and configure HAProxy as a TCP load balancer for Kubernetes API"
+  license: "MIT"
+  min_ansible_version: "2.14.0"
+
+  platforms:
+    - name: Ubuntu
+      versions:
+        - "22.04"
+        - "24.04"
+
+  galaxy_tags:
+    - haproxy
+    - kubernetes
+    - load-balancer
+    - networking
+
+# ---------------------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------------------
+# HAProxy depends on the common role for OS-level prerequisites.
+# ===========================================================================
+
+dependencies:
+  - role: common

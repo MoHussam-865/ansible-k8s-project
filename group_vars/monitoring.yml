@@ -1,0 +1,38 @@
+# =============================================================================
+# group_vars/monitoring.yml (root level)
+# =============================================================================
+# Variables in this file apply ONLY to hosts in the 'monitoring' group.
+# =============================================================================
+
+---
+# ---------------------------------------------------------------------------
+# Prometheus configuration
+# ---------------------------------------------------------------------------
+
+# How often Prometheus scrapes targets (seconds)
+prometheus_scrape_interval: 15s
+
+# Prometheus own metrics port
+prometheus_local_port: 9090
+
+# Prometheus systemd service name
+prometheus_service_name: prometheus
+
+# ---------------------------------------------------------------------------
+# Grafana configuration
+# ---------------------------------------------------------------------------
+
+# Grafana systemd service name
+grafana_service_name: grafana-server
+
+# Grafana APT repository configuration
+grafana_apt_key_url: https://apt.grafana.com/gpg.key
+grafana_apt_repo_url: https://apt.grafana.com
+
+# ---------------------------------------------------------------------------
+# Node Exporter configuration
+# ---------------------------------------------------------------------------
+
+node_exporter_service_name: prometheus-node-exporter
+node_exporter_service_state: started
+node_exporter_service_enabled: true

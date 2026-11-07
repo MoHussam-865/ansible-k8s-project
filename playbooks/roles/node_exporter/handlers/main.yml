@@ -1,0 +1,14 @@
+# =============================================================================
+# roles/node_exporter/handlers/main.yml
+# =============================================================================
+# Handlers for the Node Exporter role.
+# =============================================================================
+
+---
+
+- name: restart node_exporter
+  ansible.builtin.service:
+    name: "{{ node_exporter_service_name }}"
+    state: restarted
+  become: true
+  listen: "restart node_exporter"

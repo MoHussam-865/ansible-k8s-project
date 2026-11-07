@@ -44,11 +44,15 @@
           - "========================================"
           - "Control Plane: {{ groups['control-plane'] | join(', ') }}"
           - "Workers:       {{ groups['workers'] | join(', ') }}"
+          - "HAProxy:       {{ groups['haproxy'] | default([]) | join(', ') }}"
+          - "Monitoring:    {{ groups['monitoring'] | default([]) | join(', ') }}"
           - ""
           - "Next steps:"
           - "  Watch cluster: kubectl get nodes --watch"
           - "  Check pods:    kubectl get pods --all-namespaces"
           - "  Deploy test:   kubectl run nginx --image=nginx:alpine"
+          - "  Prometheus:    http://<monitoring-ip>:9090"
+          - "  Grafana:       http://<monitoring-ip>:3000"
           - "========================================"
       tags:
         - always

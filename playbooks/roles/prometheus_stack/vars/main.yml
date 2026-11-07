@@ -1,0 +1,34 @@
+# =============================================================================
+# roles/prometheus_stack/vars/main.yml
+# =============================================================================
+# Internal (non-overridable) variables for the Prometheus Stack role.
+# =============================================================================
+
+---
+
+# ---------------------------------------------------------------------------
+# Prometheus internal settings
+# ---------------------------------------------------------------------------
+
+# OS user that runs the prometheus process
+prometheus_user: prometheus
+prometheus_group: prometheus
+
+# Absolute path to the prometheus binary after extraction
+prometheus_binary: "{{ prometheus_install_dir }}/prometheus"
+
+# Download destination (temp file)
+prometheus_download_dest: /tmp/prometheus-{{ prometheus_version }}.tar.gz
+
+# Extracted directory name inside the tarball
+prometheus_archive_dir: prometheus-{{ prometheus_version }}.linux-amd64
+
+# Path to the Prometheus YAML config file
+prometheus_config_file: "{{ prometheus_config_dir }}/prometheus.yml"
+
+# ---------------------------------------------------------------------------
+# Grafana internal settings
+# ---------------------------------------------------------------------------
+
+grafana_user: grafana
+grafana_group: grafana

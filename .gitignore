@@ -5,6 +5,7 @@
 # Ansible .retry files (recreated on every failure)
 .retries/
 *.retry
+retry-files/
 
 # Python bytecode (generated when modules run)
 __pycache__/
@@ -31,6 +32,12 @@ Thumbs.db
 # Secrets or local-only overrides (don't commit these!)
 inventory/**/host_vars/*.vault.yml
 !inventory/**/host_vars/*.vault.example.yml
+
+# Ansible fact cache (generated on every run)
+cache/
+
+# Ansible log file
+ansible.log
 
 # Virtual environments
 .venv/

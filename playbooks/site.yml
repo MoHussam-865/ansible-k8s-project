@@ -6,8 +6,10 @@
 # Purpose:
 #   This is the SINGLE entry point that provisions the entire cluster:
 #   1. Bootstrap (OS prep)
-#   2. Kubernetes cluster (base stack + control plane + workers + CNI)
-#   3. Verify cluster health
+#   2. HAProxy (load balancer)
+#   3. Kubernetes cluster (base stack + control plane + workers + CNI)
+#   4. Verify cluster health
+#   5. Monitoring stack (Node Exporter + Prometheus + Grafana)
 #
 # Usage:
 #   ansible-playbook playbooks/site.yml
@@ -15,14 +17,21 @@
 # To run only specific stages:
 #   ansible-playbook playbooks/site.yml --tags bootstrap
 #   ansible-playbook playbooks/site.yml --tags kubernetes,calico
+#   ansible-playbook playbooks/site.yml --tags node_exporter,prometheus
 # =============================================================================
 
 ---
 - name: Stage 5 — Bootstrap OS on all nodes
   ansible.builtin.import_playbook: bootstrap.yml
 
+- name: Stage 5b — Install HAProxy load balancer
+  ansible.builtin.import_playbook: haproxy.yml
+
 - name: Stages 5-10 — Provision Kubernetes cluster
   ansible.builtin.import_playbook: kubernetes-cluster.yml
 
 - name: Stage 11 — Verify cluster health
   ansible.builtin.import_playbook: verify.yml
+
+- name: Stage 12 — Deploy monitoring stack
+  ansible.builtin.import_playbook: monitoring.yml
