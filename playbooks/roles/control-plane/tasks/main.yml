@@ -231,7 +231,7 @@
 
 - name: Upload certificates and capture certificate key (FIRST MASTER ONLY)
   ansible.builtin.command:
-    cmd: kubeadm init phase upload-certs --upload-certs
+    cmd: sudo kubeadm init phase upload-certs --upload-certs | tail -n 1
   become: true
   register: kubeadm_upload_certs_result
   changed_when: false
@@ -251,7 +251,7 @@
     #   [upload-certs] Using certificate key:
     #   <CERTIFICATE_KEY>
     # We need ONLY the actual certificate key (the last non-empty line).
-    kubeadm_certificate_key_raw: "{{ (kubeadm_upload_certs_result.stdout | trim).split('\\n') | last | trim }}"
+    kubeadm_certificate_key_raw: "{{ kubeadm_upload_certs_result.stdout | trim }}"
   run_once: true
   when:
     - run_kubeadm_init | bool
