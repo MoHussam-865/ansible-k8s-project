@@ -16,5 +16,5 @@ containerd_worker_config: true
 # Workers reach the Kubernetes API through HAProxy, not a specific master.
 # This is the load-balanced endpoint that distributes across all masters.
 # ---------------------------------------------------------------------------
-control_plane_ip: "{{ hostvars[groups['haproxy'][0]]['ansible_facts']['default_ipv4']['address'] | default('') }}"
+control_plane_ip: "{{ hostvars[groups['haproxy'][0]]['ansible_host'] | default('') }}"
 control_plane_port: 6443

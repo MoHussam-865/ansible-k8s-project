@@ -40,6 +40,56 @@
 
 ---
 # =============================================================================
+# TASK SET 0: Clean up stale Kubernetes state from previous failed joins
+# =============================================================================
+# If the node has partial/existing kubelet config from a previous failed join
+# (e.g. kubelet.conf exists but ca.crt is missing), kubeadm join refuses to
+# run because of preflight errors (FileAvailable, Port-10250, etc.).
+#
+# We check for stale kubelet.conf and remove it + related artifacts before
+# attempting the join. This makes the role fully idempotent across re-deploys.
+# =============================================================================
+
+- name: Check for stale kubelet config from previous failed join
+  ansible.builtin.stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: worker_stale_check
+  changed_when: false
+  tags:
+    - worker
+    - join
+
+- name: Stop kubelet if stale config exists (previous failed join)
+  ansible.builtin.systemd:
+    name: kubelet
+    state: stopped
+    enabled: false
+  become: true
+  when:
+    - worker_join_cluster | bool
+    - worker_stale_check.stat.exists
+  ignore_errors: true
+  tags:
+    - worker
+    - join
+
+- name: Remove stale Kubernetes config and certificates
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  become: true
+  loop:
+    - /etc/kubernetes/kubelet.conf
+    - /etc/kubernetes/pki
+    - /var/lib/kubeadm
+  when:
+    - worker_join_cluster | bool
+    - worker_stale_check.stat.exists
+  tags:
+    - worker
+    - join
+
+# =============================================================================
 # TASK SET 1: Wait for the control plane to be ready
 # =============================================================================
 # Workers must NOT attempt to join until the control plane has finished
@@ -54,7 +104,7 @@
 - name: Wait for control plane API to be ready
   ansible.builtin.wait_for:
     # The host to check (IP or hostname of the control plane)
-    host: "{{ hostvars[worker_control_plane_host].ansible_facts.default_ipv4.address }}"
+    host: "{{ hostvars[worker_control_plane_host]['ansible_host'] }}"
     # The port to check (Kubernetes API port)
     port: "{{ worker_control_plane_port }}"
     # How long to wait before giving up
