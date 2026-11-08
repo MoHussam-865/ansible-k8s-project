@@ -30,11 +30,11 @@
 
 - name: Build node_exporter target list for Prometheus
   ansible.builtin.set_fact:
-    prometheus_scrape_targets: "{{ prometheus_scrape_targets + [hostvars[item]['ansible_host'] ~ ':9100'] }}"
+    prometheus_scrape_targets: "{{ prometheus_scrape_targets + [(hostvars[item]['ansible_host'] | default(hostvars[item]['inventory_hostname'], true)) ~ ':9100'] }}"
   loop: "{{ groups['cluster'] }}"
   when:
     - run_prometheus_role | bool
-    - hostvars[item]['ansible_host'] is defined
+    - hostvars[item]['ansible_host'] is defined or hostvars[item]['inventory_hostname'] is defined
   run_once: true
   tags:
     - prometheus

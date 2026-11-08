@@ -25,7 +25,7 @@ pod_network_cidr: "10.0.0.0/16"
 
 # Kubernetes API endpoint — dynamically resolved from the first control-plane node.
 # Uses hostvars cross-group reference with groups[] index instead of hardcoded hostname.
-kubernetes_api_endpoint: "{{ hostvars[groups['control-plane'][0]]['ansible_host'] }}"
+kubernetes_api_endpoint: "{{ hostvars[groups['control-plane'][0]]['ansible_host'] | default(hostvars[groups['control-plane'][0]]['inventory_hostname'], true) }}"
 
 # ---------------------------------------------------------------------------
 # Primary (first) control-plane hostname
@@ -43,7 +43,7 @@ kubernetes_api_endpoint: "{{ hostvars[groups['control-plane'][0]]['ansible_host'
 # Set this to the FIRST host that runs kubeadm init.
 # Must match the inventory hostname (e.g., control-plane-01, master-1, etc.)
 # ---------------------------------------------------------------------------
-kubernetes_primary_master: control-plane-01
+kubernetes_primary_master: "{{ groups['control-plane'][0] }}"
 
 # Kubernetes OS user
 kubernetes_user: "root"

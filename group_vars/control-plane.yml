@@ -20,7 +20,7 @@ kubernetes_control_plane_version: "{{ kubernetes_version }}"
 # This is set in Phase 3 when HAProxy is deployed.
 # ---------------------------------------------------------------------------
 # IP that workers use to reach the Kubernetes API (HAProxy frontend)
-control_plane_ip: "{{ hostvars[groups['haproxy'][0]]['ansible_host'] | default('') }}"
+control_plane_ip: "{{ hostvars[groups['haproxy'][0]]['ansible_host'] | default(hostvars[groups['haproxy'][0]]['inventory_hostname'], true) }}"
 control_plane_endpoint: "{{ control_plane_ip }}:{{ kubernetes_api_port | default('6443') }}"
 
 # Port for kubeadm init (default: 6443 for the API)
@@ -34,4 +34,4 @@ kubernetes_api_port: 6443
 # Override here if ansible_host is not the correct advertise address
 # (e.g., multi-homed hosts, separate management and data networks).
 # ---------------------------------------------------------------------------
-kubeadm_apiserver_advertise_address: "{{ ansible_host }}"
+kubeadm_apiserver_advertise_address: "{{ ansible_host | default(inventory_hostname, true) }}"

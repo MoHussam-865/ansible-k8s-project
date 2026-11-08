@@ -21,13 +21,13 @@ kubeadm_pod_network_cidr: "{{ pod_network_cidr | default('10.0.0.0/16') }}"
 # to perform mutual TLS verification and download CA certificates.
 # Defaults to ansible_host (the IP Ansible uses to connect).
 # Override in group_vars/control-plane.yml if your cluster topology requires it.
-kubeadm_apiserver_advertise_address: "{{ ansible_host }}"
+kubeadm_apiserver_advertise_address: "{{ ansible_host | default(inventory_hostname, true) }}"
 
 # API server endpoint — the host:port workers use to reach the Kubernetes API
 # Through HAProxy, not directly at a specific master's IP.
 # Must NOT include the https:// protocol — kubeadm's --control-plane-endpoint
 # flag expects a bare <host>:<port> string.
-kubeadm_apiserver_endpoint: "{{ control_plane_endpoint | default(ansible_host ~ ':' ~ (kubernetes_api_port | default('6443'))) }}"
+kubeadm_apiserver_endpoint: "{{ control_plane_endpoint | default((ansible_host | default(inventory_hostname, true)) ~ ':' ~ (kubernetes_api_port | default('6443'))) }}"
 
 # Directory where kubeadm stores cluster certificates and config
 kubeadm_data_dir: /var/lib/kubeadm

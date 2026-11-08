@@ -24,7 +24,7 @@ worker_control_plane_poll_interval: 5
 # ---------------------------------------------------------------------------
 
 # Control plane hostname (from inventory) — first HAProxy node
-worker_control_plane_host: "{{ groups['haproxy'][0] | default(groups['control-plane'][0]) }}"
+worker_control_plane_host: "{{ groups['haproxy'][0] | default(groups['control-plane'][0], true) }}"
 
 # Control plane API port
 worker_control_plane_port: "{{ kubernetes_api_port | default('6443') }}"

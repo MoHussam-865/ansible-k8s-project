@@ -104,7 +104,7 @@
 - name: Wait for control plane API to be ready
   ansible.builtin.wait_for:
     # The host to check (HAProxy IP — workers reach API through load balancer)
-    host: "{{ hostvars[worker_control_plane_host]['ansible_host'] }}"
+    host: "{{ hostvars[worker_control_plane_host]['ansible_host'] | default(hostvars[worker_control_plane_host]['inventory_hostname'], true) }}"
     # The port to check (Kubernetes API port)
     port: "{{ worker_control_plane_port }}"
     # How long to wait before giving up

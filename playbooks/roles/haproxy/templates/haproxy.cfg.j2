@@ -47,5 +47,5 @@ backend kubernetes-masters
     option tcpka           # Server-side TCP keepalive for long-lived connections
     option clitcpka        # Client-side TCP keepalive (avoid dropped sessions)
 {% for host in groups['control-plane'] %}
-    server {{ host }} {{ hostvars[host]['ansible_host'] }}:{{ haproxy_backend_port }} check
+    server {{ host }} {{ hostvars[host]['ansible_host'] | default(hostvars[host]['inventory_hostname'], true) }}:{{ haproxy_backend_port }} check
 {% endfor %}

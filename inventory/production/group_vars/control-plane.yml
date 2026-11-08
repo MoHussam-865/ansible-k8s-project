@@ -17,7 +17,7 @@ kubernetes_control_plane_version: "{{ kubernetes_version }}"
 
 # IP or hostname that workers use to reach the control plane
 # Updated to use dynamic groups[] lookup instead of hardcoded hostname
-control_plane_ip: "{{ hostvars[groups['control-plane'][0]]['ansible_host'] }}"
+control_plane_ip: "{{ hostvars[groups['control-plane'][0]]['ansible_host'] | default(hostvars[groups['control-plane'][0]]['inventory_hostname'], true) }}"
 
 # Port for kubeadm init (default: 6443 for the API)
 kubernetes_api_port: 6443
