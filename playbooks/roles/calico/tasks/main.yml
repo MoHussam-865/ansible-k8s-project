@@ -65,19 +65,19 @@
   tags:
     - calico
 
-- name: Wait for calico-node DaemonSet to be ready
+- name: Wait for calico-node DaemonSet rollout to complete
   ansible.builtin.command: >
-    kubectl wait --kubeconfig /etc/kubernetes/admin.conf
-    --for=condition=Available
-    daemonset/calico-node -n kube-system
-    --timeout=120s
+    kubectl rollout status daemonset/calico-node -n kube-system
+    --kubeconfig /etc/kubernetes/admin.conf
+    --timeout=180s
   register: calico_wait_result
   changed_when: false
   run_once: true
   delegate_to: "{{ kubernetes_primary_master }}"
-  # Retry in case the DaemonSet wasn't created yet right after apply
+  # Rollout status returns 0 once all pods are ready, which is more reliable
+  # than checking the DaemonSet's Available condition.
   retries: 3
-  delay: 5
+  delay: 10
   until: calico_wait_result.rc == 0
   tags:
     - calico
