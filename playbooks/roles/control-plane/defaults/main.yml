@@ -15,6 +15,14 @@
 # Pod network CIDR — the subnet used for container-to-container traffic
 kubeadm_pod_network_cidr: "{{ pod_network_cidr | default('10.0.0.0/16') }}"
 
+# Advertise address — the IP this master uses for node-to-node communication
+# This MUST be the first master's own private IP (not the HAProxy IP).
+# Workers and additional masters need this address during the join handshake
+# to perform mutual TLS verification and download CA certificates.
+# Defaults to ansible_host (the IP Ansible uses to connect).
+# Override in group_vars/control-plane.yml if your cluster topology requires it.
+kubeadm_apiserver_advertise_address: "{{ ansible_host }}"
+
 # API server endpoint — the host:port workers use to reach the Kubernetes API
 # Through HAProxy, not directly at a specific master's IP.
 # Must NOT include the https:// protocol — kubeadm's --control-plane-endpoint

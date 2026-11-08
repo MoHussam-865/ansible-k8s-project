@@ -43,7 +43,9 @@ frontend kubernetes-api
 # ---------------------------------------------------------------------------
 backend kubernetes-masters
     balance {{ haproxy_balance_algorithm }}
-    option tcp-check
+    option tcp-check       # TCP-level health check (connect + expect OK)
+    option tcpka           # Server-side TCP keepalive for long-lived connections
+    option clitcpka        # Client-side TCP keepalive (avoid dropped sessions)
 {% for host in groups['control-plane'] %}
     server {{ host }} {{ hostvars[host]['ansible_host'] }}:{{ haproxy_backend_port }} check
 {% endfor %}

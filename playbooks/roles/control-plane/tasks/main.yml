@@ -110,12 +110,32 @@
     - kubeadm
 
 # =============================================================================
-# FIRST MASTER ONLY (run_once) — Certificate key + kubeadm init + join command
+# FIRST MASTER ONLY (run_once) — kubeadm init + upload-certs + join command
 # =============================================================================
 # These tasks run ONLY on the first control-plane node.
 # run_once: true ensures they execute exactly once; all other hosts wait
 # for completion before proceeding. This guarantees the cluster exists
 # BEFORE additional masters attempt to join.
+#
+# FLOW FOR FIRST MASTER:
+#   1. Run 'kubeadm init' to bootstrap the cluster
+#      --control-plane-endpoint=<HAPROXY_IP>
+#          Workers reach the API via HAProxy (load-balanced).
+#      --apiserver-advertise-address=<MASTER_IP>
+#          The master's OWN private IP for node-to-node operations
+#          (certificate upload, mutual TLS handshake during join).
+#      --upload-certs
+#          Upload CA certificates to the datastore (auto-generates an
+#          encryption key; NO --certificate-key is passed).
+#      --pod-network-cidr=<CIDR>
+#          Subnet for pod-to-pod networking.
+#   2. Run 'kubeadm init phase upload-certs --upload-certs' to capture the
+#      auto-generated certificate key. Additional masters need this key
+#      when they join with --control-plane.
+#   3. Generate the worker join command via kubeadm token create
+#      --print-join-command (already includes --discovery-token-ca-cert-hash).
+#   4. Persist the certificate key and join command to files for re-run
+#      fallback (so other hosts can access them via hostvars or slurp).
 # =============================================================================
 
 - name: Check if certificate key file already exists (re-run)
@@ -123,34 +143,6 @@
     path: "{{ kubeadm_cert_key_file }}"
   register: kubeadm_cert_key_file_check
   run_once: true
-  tags:
-    - control-plane
-    - kubeadm
-    - multi-master
-
-- name: Generate certificate key for additional masters (first run)
-  ansible.builtin.command:
-    cmd: kubeadm certs certificate-key
-  register: kubeadm_cert_key_gen
-  changed_when: false
-  run_once: true
-  when:
-    - run_kubeadm_init | bool
-    - not kubeadm_cert_key_file_check.stat.exists
-  tags:
-    - control-plane
-    - kubeadm
-    - multi-master
-
-- name: Store generated certificate key as a fact
-  ansible.builtin.set_fact:
-    kubeadm_certificate_key_raw: "{{ kubeadm_cert_key_gen.stdout | default('') | trim }}"
-  run_once: true
-  when:
-    - run_kubeadm_init | bool
-    - kubeadm_cert_key_gen is defined
-    - kubeadm_cert_key_gen.stdout is defined
-    - kubeadm_cert_key_gen.stdout | length > 0
   tags:
     - control-plane
     - kubeadm
@@ -187,9 +179,19 @@
 # =============================================================================
 # TASK: kubeadm init — FIRST MASTER ONLY
 # =============================================================================
-# We pass --certificate-key with the SAME key we generated/stored above,
-# ensuring that the uploaded certificates can be decrypted by additional
-# masters using the same key.
+# We pass --upload-certs WITHOUT --certificate-key, which tells kubeadm to
+# auto-generate an encryption key and upload the CA certificates encrypted
+# with it. After init completes, we run 'kubeadm init phase upload-certs
+# --upload-certs' to retrieve that auto-generated key for use by additional
+# masters joining with --control-plane.
+#
+# CRITICAL: --apiserver-advertise-address
+#   This MUST be the first master's own private IP so that additional nodes
+#   can reach it directly for the join handshake (certificate verification,
+#   mutual TLS). Without this flag, nodes attempt to reach the HAProxy
+#   endpoint for internal cluster operations, which breaks the join flow
+#   because certificate upload and node-to-node registration require a
+#   direct TLS handshake with the master that holds the CA private key.
 # =============================================================================
 
 - name: Initialize Kubernetes cluster with kubeadm (FIRST MASTER ONLY)
@@ -198,14 +200,12 @@
       kubeadm init
         --pod-network-cidr={{ kubeadm_pod_network_cidr }}
         --control-plane-endpoint={{ kubeadm_apiserver_endpoint }}
+        --apiserver-advertise-address={{ kubeadm_apiserver_advertise_address }}
         --upload-certs
-        --certificate-key={{ kubeadm_certificate_key_raw }}
   become: true
   when:
     - run_kubeadm_init | bool
     - not cluster_ca_check.stat.exists
-    - kubeadm_certificate_key_raw is defined
-    - kubeadm_certificate_key_raw | length > 0
   register: kubeadm_init_result
   changed_when: kubeadm_init_result.rc == 0
   # ---------------------------------------------------------------------------
@@ -218,6 +218,45 @@
   tags:
     - control-plane
     - kubeadm
+
+# =============================================================================
+# TASK: Upload certificates and capture certificate key — FIRST MASTER ONLY
+# =============================================================================
+# After init with --upload-certs, the CA certificates are stored in the
+# datastore encrypted with an auto-generated key. Running:
+#   kubeadm init phase upload-certs --upload-certs
+# prints that key to stdout. Additional masters need this key to join with
+# --certificate-key (they decrypt the uploaded CA certs with it).
+# =============================================================================
+
+- name: Upload certificates and capture certificate key (FIRST MASTER ONLY)
+  ansible.builtin.command:
+    cmd: kubeadm init phase upload-certs --upload-certs
+  become: true
+  register: kubeadm_upload_certs_result
+  changed_when: false
+  when:
+    - run_kubeadm_init | bool
+    - not cluster_ca_check.stat.exists
+  run_once: true
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
+
+- name: Store certificate key from upload-certs output
+  ansible.builtin.set_fact:
+    kubeadm_certificate_key_raw: "{{ kubeadm_upload_certs_result.stdout | default('') | trim }}"
+  run_once: true
+  when:
+    - run_kubeadm_init | bool
+    - kubeadm_upload_certs_result is defined
+    - kubeadm_upload_certs_result.stdout is defined
+    - kubeadm_upload_certs_result.stdout | length > 0
+  tags:
+    - control-plane
+    - kubeadm
+    - multi-master
 
 - name: Ensure kubeadm data directory exists (FIRST MASTER)
   ansible.builtin.file:
@@ -296,7 +335,14 @@
 # These tasks run ONLY on control-plane nodes that are NOT the first master.
 # They retrieve the certificate key and join command from the first master's
 # hostvars (or read from files as fallback), build the full join command
-# with --control-plane, and run kubeadm join --control-plane.
+# with --control-plane --certificate-key, and run kubeadm join.
+#
+# The final join command for additional masters looks like:
+#   kubeadm join <HAPROXY_IP>:6443 \
+#       --token=<TOKEN> \
+#       --discovery-token-ca-cert-hash=sha256:<HASH> \
+#       --control-plane \
+#       --certificate-key=<KEY>
 # =============================================================================
 
 - name: Retrieve certificate key from first master hostvars
