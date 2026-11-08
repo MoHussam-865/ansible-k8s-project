@@ -230,8 +230,12 @@
 # =============================================================================
 
 - name: Upload certificates and capture certificate key (FIRST MASTER ONLY)
-  ansible.builtin.command:
-    cmd: sudo kubeadm init phase upload-certs --upload-certs | tail -n 1
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      kubeadm init phase upload-certs --upload-certs | tail -n 1
+  args:
+    executable: /bin/bash
   become: true
   register: kubeadm_upload_certs_result
   changed_when: false
