@@ -1,34 +1,39 @@
-﻿# =============================================================================
+# =============================================================================
 # playbooks/kubernetes-cluster.yml
 # =============================================================================
-# The MAIN Kubernetes provisioning playbook — Stages 5-10.
+# The MAIN Kubernetes provisioning playbook.
 #
 # Purpose:
 #   Run the FULL provisioning pipeline:
 #   - Common OS prep (common role)
 #   - Container runtime (containerd role)
 #   - Kubernetes binaries (kubernetes role)
-#   - Control plane init + join (control-plane role) — all masters
+#   - Control plane init (first master only) — kubeadm init
+#   - CNI networking (calico role) — BEFORE additional nodes join
+#   - Additional masters join (control-plane role continued)
 #   - Worker join (worker role)
-#   - CNI networking (calico role)
 #
 # Usage:
 #   ansible-playbook playbooks/kubernetes-cluster.yml
 #
 # Play order matters:
-#   Play 1: ALL nodes — install base stack (common → containerd → kubernetes)
-#   Play 2: ALL control-plane — kubeadm init (first) + join --control-plane (rest)
-#   Play 3: workers — kubeadm join through HAProxy
-#   Play 4: control-plane (first only) — install Calico CNI via kubectl apply manifest
+#   Play 1: ALL nodes — install base stack (common + containerd + kubernetes)
+#   Play 2: FIRST control-plane only — kubeadm init
+#   Play 3: FIRST control-plane only — install Calico CNI via kubectl apply manifest
+#   Play 4: REST of control-plane — kubeadm join --control-plane
+#   Play 5: workers — kubeadm join through HAProxy
 #
-# Why this order?
-#   - kubeadm init MUST run BEFORE kubeadm join (obviously)
-#   - Workers need the cluster to be initialized first
-#   - CNI can run anytime after containerd is installed
-#   - The control-plane role handles ordering: run_once tasks on the first
-#     master finish BEFORE additional masters attempt to join
-#   - All control-plane nodes get kubelet config, admin.conf, and kubelet
-#     service configured after joining
+# Why Calico before joining additional nodes?
+#   - Pods (including calico-node DaemonSet) require networking to
+#     communicate across nodes
+#   - The calico-node DaemonSet deploys CNI plugin binaries onto every
+#     node that joins the cluster
+#   - Without CNI, core DNS (CoreDNS) and other critical pods remain
+#     in Pending state (no network available)
+#   - kubelet on newly joining nodes reports NotReady until CNI is
+#     operational
+#   - Installing Calico after join triggers unnecessary node status
+#     transitions (NotReady -> Ready) and may require kubelet restart
 # =============================================================================
 
 ---
@@ -63,27 +68,95 @@
         msg: "Base stack installed on {{ ansible_hostname }}."
       tags:
         - always
-
 # =============================================================================
-# PLAY 2: Initialize / join ALL control-plane nodes
+# PLAY 2: Initialize the FIRST control-plane node only
 # =============================================================================
-# Runs on ALL control-plane hosts. The control-plane role handles both:
-#   - FIRST MASTER:  kubeadm init with HAProxy endpoint + upload-certs
-#   - REST MASTERS:  kubeadm join --control-plane --certificate-key=<key>
+# Runs ONLY on the first control-plane host. This play:
+#   - Runs 'kubeadm init' to bootstrap the cluster
+#   - Captures the join command and certificate key for later use
+#   - Deploys kubelet configuration and admin.conf on the first master
 #
-# Why this works in a single play:
-#   First-master tasks use run_once: true, which makes ALL hosts wait
-#   for them to complete. By the time additional master tasks run,
-#   the cluster exists and hostvars have the join command + cert key.
-#
-# After initialization/join, kubelet configuration, service start,
-# and admin.conf copy run on EVERY control-plane node.
+# IMPORTANT:
+#   Only the FIRST master is initialized here. Additional masters join
+#   AFTER Calico CNI is installed (Play 3). This ensures the control-plane
+#   already has pod networking operational when additional masters attach.
 # =============================================================================
 
-- name: PLAY 2 — Bootstrap all control-plane nodes (init + join)
+- name: PLAY 2 — Initialize first control-plane node (kubeadm init)
+  hosts: control-plane[0]
+  gather_facts: true
+  become: true
+
+  roles:
+    - role: control-plane
+      tags:
+# =============================================================================
+# PLAY 3: Install Calico CNI networking BEFORE additional nodes join
+# =============================================================================
+# Pods need network connectivity to communicate. We install Calico via its
+# official Kubernetes manifest BEFORE additional masters or workers join.
+#
+# WHY CALICO BEFORE JOIN?
+#   + The calico-node DaemonSet runs on ALL nodes, deploying CNI plugin
+#     binaries onto each node's filesystem via hostPath mounts.
+#   + When a new node joins the cluster, kubelet immediately expects CNI
+#     to be available. If CNI isn't installed yet, the node stays NotReady
+#     until the calico-node pod lands on it.
+#   + Installing CNI first means newly joining nodes find CNI already
+#     present and transition to Ready immediately.
+#   + CoreDNS and other critical system pods start successfully because
+#     pod networking is available from the start.
+#
+# IMPORTANT:
+#   This play targets ONLY the first control-plane node. The kubectl apply
+#   command only needs to run once — the Calico DaemonSet then deploys the
+#   CNI plugin binaries and configuration onto EVERY node automatically
+#   as they join the cluster.
+# =============================================================================
+
+- name: PLAY 3 — Install Calico CNI networking (before nodes join)
+  hosts: control-plane[0]
+  gather_facts: true
+  become: true
+
+  roles:
+    - role: calico
+      tags:
+        - calico
+
+  post_tasks:
+    - name: Calico manifest applied
+      ansible.builtin.debug:
+        msg: "Calico manifest applied from control-plane {{ ansible_hostname }}. CNI DaemonSet will install on all current and future nodes."
+      tags:
+        - always
+
+# =============================================================================
+# PLAY 4: Join remaining control-plane nodes (additional masters)
+# =============================================================================
+# Runs on ALL control-plane hosts EXCEPT the first one.
+# Additional masters join with:
+#   kubeadm join --control-plane --certificate-key=<key>
+#
+# The join command and certificate key were captured from the first master
+# in Play 2 and are available via hostvars or the persisted files.
+#
+# By this point, Calico CNI is already installed on the first master,
+# so the calico-node DaemonSet will automatically deploy CNI onto each
+# new master as it joins the cluster.
+# =============================================================================
+
+- name: PLAY 4 — Join remaining control-plane nodes (--control-plane)
   hosts: control-plane
   gather_facts: true
   become: true
+
+  pre_tasks:
+    - name: Skip the first master (already initialized)
+      ansible.builtin.meta: end_host
+      when: inventory_hostname == groups['control-plane'][0]
+      tags:
+        - control-plane
 
   roles:
     - role: control-plane
@@ -91,21 +164,24 @@
         - control-plane
 
   post_tasks:
-    - name: Control-plane node ready
+    - name: Additional control-plane node joined
       ansible.builtin.debug:
-        msg: "Control-plane {{ ansible_hostname }} is ready."
+        msg: "Control-plane {{ ansible_hostname }} has joined the cluster."
       tags:
         - always
 
 # =============================================================================
-# PLAY 3: Join workers to the cluster
+# PLAY 5: Join workers to the cluster
 # =============================================================================
 # Runs ONLY on the workers group.
 # Each worker retrieves the join command from the first control plane (via hostvars)
 # and runs 'kubeadm join' to attach to the cluster through HAProxy.
+#
+# By this point, Calico CNI is already installed, so workers transition
+# to Ready immediately after joining.
 # =============================================================================
 
-- name: PLAY 3 — Join workers to the cluster
+- name: PLAY 5 — Join workers to the cluster
   hosts: workers
   gather_facts: true
   become: true
@@ -130,34 +206,5 @@
     - name: Worker joined
       ansible.builtin.debug:
         msg: "Worker {{ ansible_hostname }} has joined the cluster."
-      tags:
-        - always
-
-# =============================================================================
-# PLAY 4: Install Calico CNI networking on the control plane
-# =============================================================================
-# Pods need network connectivity to communicate. We install Calico via its
-# official Kubernetes manifest.
-#
-# IMPORTANT:
-#   This play targets ONLY the first control-plane node. The kubectl apply command
-#   only needs to run once — the Calico DaemonSet then deploys the CNI
-#   plugin binaries and configuration onto EVERY node automatically.
-# =============================================================================
-
-- name: PLAY 4 — Install Calico CNI networking
-  hosts: control-plane[0]
-  gather_facts: true
-  become: true
-
-  roles:
-    - role: calico
-      tags:
-        - calico
-
-  post_tasks:
-    - name: Calico manifest applied
-      ansible.builtin.debug:
-        msg: "Calico manifest applied from control-plane {{ ansible_hostname }}. CNI DaemonSet will install on all nodes."
       tags:
         - always
