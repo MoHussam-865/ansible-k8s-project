@@ -246,7 +246,12 @@
 
 - name: Store certificate key from upload-certs output
   ansible.builtin.set_fact:
-    kubeadm_certificate_key_raw: "{{ kubeadm_upload_certs_result.stdout | default('') | trim }}"
+    # kubeadm init phase upload-certs --upload-certs outputs:
+    #   [upload-certs] Storing the certificates in Secret "kubeadm-certs" in the "kube-system" Namespace
+    #   [upload-certs] Using certificate key:
+    #   <CERTIFICATE_KEY>
+    # We need ONLY the actual certificate key (the last non-empty line).
+    kubeadm_certificate_key_raw: "{{ (kubeadm_upload_certs_result.stdout | trim).split('\\n') | last | trim }}"
   run_once: true
   when:
     - run_kubeadm_init | bool
