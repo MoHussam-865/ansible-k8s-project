@@ -89,7 +89,7 @@
 
   roles:
     - role: control-plane
-      tags:
+#      tags:
 # =============================================================================
 # PLAY 3: Install Calico CNI networking BEFORE additional nodes join
 # =============================================================================
