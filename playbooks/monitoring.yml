@@ -91,7 +91,7 @@
           - "Prometheus:  http://{{ ansible_facts['default_ipv4']['address'] }}:{{ prometheus_port }}"
           - "Grafana:     http://{{ ansible_facts['default_ipv4']['address'] }}:{{ grafana_port }}"
           - ""
-          - "Scraping {{ groups['cluster'] | length }} cluster nodes via Node Exporter."
+          - "Scraping {{ groups['cluster'] | length }} nodes via Node Exporter (cluster + haproxy + monitoring)."
           - ""
           - "To access Grafana from your browser:"
           - "  http://{{ ansible_facts['default_ipv4']['address'] }}:{{ grafana_port }}"

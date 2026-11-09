@@ -56,8 +56,15 @@ haproxy-01 ansible_host=10.1.0.20
 monitoring-01 ansible_host=10.1.0.30
 
 # -----------------------------------------------------------------------------
-# cluster  — parent group of ALL kubernetes nodes (matches project hierarchy)
+# cluster  — parent group of ALL nodes with Node Exporter
+# -----------------------------------------------------------------------------
+# Node Exporter is installed on ALL hosts in this group.
+# Prometheus scrapes all hosts in this group for system metrics.
+# If you add a new group (e.g., 'storage', 'database'), make it a child of
+# 'cluster' to automatically get Node Exporter + Prometheus scraping.
 # -----------------------------------------------------------------------------
 [cluster:children]
 control-plane
 workers
+haproxy
+monitoring

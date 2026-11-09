@@ -21,6 +21,12 @@ haproxy_mode: tcp
 
 # Load distribution algorithm (roundrobin, leastconn, source)
 haproxy_balance_algorithm: roundrobin
+# ---------------------------------------------------------------------------
+# HAProxy Stats — Prometheus can scrape this for HAProxy metrics
+# ---------------------------------------------------------------------------
+
+# Port for the HAProxy stats page (scraped by Prometheus)
+haproxy_stats_port: 8404
 
 # ---------------------------------------------------------------------------
 # Timeout settings

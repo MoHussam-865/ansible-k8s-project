@@ -28,10 +28,31 @@
     - prometheus
     - config
 
+- name: Initialize haproxy_stats_targets as empty list
+  ansible.builtin.set_fact:
+    haproxy_stats_targets: []
+  run_once: true
+  when: run_prometheus_role | bool
+  tags:
+    - prometheus
+    - config
+
 - name: Build node_exporter target list for Prometheus
   ansible.builtin.set_fact:
     prometheus_scrape_targets: "{{ prometheus_scrape_targets + [(hostvars[item]['ansible_host'] | default(hostvars[item]['inventory_hostname'], true)) ~ ':9100'] }}"
   loop: "{{ groups['cluster'] }}"
+  when:
+    - run_prometheus_role | bool
+    - hostvars[item]['ansible_host'] is defined or hostvars[item]['inventory_hostname'] is defined
+  run_once: true
+  tags:
+    - prometheus
+    - config
+
+- name: Build HAProxy stats target list for Prometheus
+  ansible.builtin.set_fact:
+    haproxy_stats_targets: "{{ haproxy_stats_targets + [(hostvars[item]['ansible_host'] | default(hostvars[item]['inventory_hostname'], true)) ~ ':8404' ] }}"
+  loop: "{{ groups['haproxy'] | default([]) }}"
   when:
     - run_prometheus_role | bool
     - hostvars[item]['ansible_host'] is defined or hostvars[item]['inventory_hostname'] is defined
@@ -99,12 +120,18 @@
   ansible.builtin.get_url:
     url: "{{ prometheus_download_url }}"
     dest: "{{ prometheus_download_dest }}"
+    timeout: 60
     mode: "0644"
   become: true
+  register: download_prometheus
+  until: download_prometheus is success
+  retries: 3
+  delay: 5
   when: run_prometheus_role | bool
   tags:
     - prometheus
     - download
+
 
 - name: Extract Prometheus tarball
   ansible.builtin.unarchive:

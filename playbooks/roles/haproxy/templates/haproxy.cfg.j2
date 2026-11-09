@@ -39,6 +39,17 @@ frontend kubernetes-api
     default_backend kubernetes-masters
 
 # ---------------------------------------------------------------------------
+# HAProxy Stats — Prometheus can scrape this as a metrics source
+# ---------------------------------------------------------------------------
+frontend stats
+    bind *:{{ haproxy_stats_port | default('8404') }}
+    mode http
+    stats enable
+    stats uri /stats
+    stats refresh 10s
+    stats show-desc "Kubernetes API HAProxy stats"
+
+# ---------------------------------------------------------------------------
 # Backend: dynamic list of control-plane nodes
 # ---------------------------------------------------------------------------
 backend kubernetes-masters
