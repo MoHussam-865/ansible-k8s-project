@@ -34,6 +34,16 @@
 # After the first master's init is complete, its set_fact values are
 # available via hostvars[groups['control-plane'][0]] for the rest of
 # the play.
+#
+# CRITICAL WARNING: run_once: true alone is NOT ENOUGH for safety!
+# When meta: end_host in pre_tasks removes the first master from
+# the active batch, run_once targets the NEXT active host instead.
+# This causes secondary masters to mistakenly run kubeadm init
+# followed by kubeadm join — both on the same node.
+#
+# FIX: EVERY "FIRST MASTER ONLY" task MUST include:
+#   inventory_hostname == groups['control-plane'][0]
+# in its when condition, regardless of run_once: true.
 # =============================================================================
 #
 # =============================================================================
@@ -91,18 +101,19 @@
 # =============================================================================
 # TASK 2: Check if cluster is already initialized
 # =============================================================================
-# Idempotency check: if the cluster certificates already exist,
-# kubeadm has already been initialized and we should NOT run it again.
+# Idempotency check: if kubelet.conf already exists, this node has already
+# been initialized (kubeadm init) or has joined the cluster (kubeadm join).
 #
-# Why check for certificates?
-#   kubeadm init generates a Certificate Authority (CA) and TLS certificates.
-#   If they exist, the cluster IS already bootstrapped.
-#   Running 'kubeadm init' again would fail or overwrite them.
+# Why check for kubelet.conf instead of CA certificates?
+#   If a node fails halfway through a join, it may have generated kubelet.conf
+#   without writing the CA certificates (pki/ca.crt). Checking for kubelet.conf
+#   is more robust and is what kubeadm itself uses internally to determine
+#   whether a node has already been bootstrapped.
 # =============================================================================
 
 - name: Check if node already has cluster certificates (idempotency)
   ansible.builtin.stat:
-    path: /etc/kubernetes/pki/ca.crt
+    path: /etc/kubernetes/kubelet.conf
   register: cluster_ca_check
   changed_when: false
   tags:
@@ -143,6 +154,8 @@
     path: "{{ kubeadm_cert_key_file }}"
   register: kubeadm_cert_key_file_check
   run_once: true
+  when:
+    - inventory_hostname == groups['control-plane'][0]
   tags:
     - control-plane
     - kubeadm
@@ -154,6 +167,7 @@
   register: kubeadm_cert_key_file_content
   run_once: true
   when:
+    - inventory_hostname == groups['control-plane'][0]
     - run_kubeadm_init | bool
     - kubeadm_cert_key_file_check.stat.exists
     - kubeadm_certificate_key_raw is not defined or kubeadm_certificate_key_raw | length == 0
@@ -167,6 +181,7 @@
     kubeadm_certificate_key_raw: "{{ kubeadm_cert_key_file_content.content | b64decode | trim }}"
   run_once: true
   when:
+    - inventory_hostname == groups['control-plane'][0]
     - run_kubeadm_init | bool
     - kubeadm_cert_key_file_content.skipped is not defined
     - kubeadm_cert_key_file_content.content is defined
@@ -204,6 +219,7 @@
         --upload-certs
   become: true
   when:
+    - inventory_hostname == groups['control-plane'][0]
     - run_kubeadm_init | bool
     - not cluster_ca_check.stat.exists
   register: kubeadm_init_result
@@ -227,6 +243,16 @@
 #   kubeadm init phase upload-certs --upload-certs
 # prints that key to stdout. Additional masters need this key to join with
 # --certificate-key (they decrypt the uploaded CA certs with it).
+#
+# CRITICAL — 2-HOUR CERTIFICATE KEY EXPIRY:
+#   The --upload-certs key expires after 2 hours. If this playbook is run
+#   a day later to add a new master, the first master must ALWAYS upload
+#   certs to generate a FRESH key. The old condition (not cluster_ca_check)
+#   caused the first master to skip upload-certs on subsequent runs, passing
+#   the expired key to new masters and causing kubeadm join to fail.
+#
+#   FIX: This task runs unconditionally for the first master (no
+#   cluster_ca_check gate) so a fresh 2-hour key is always available.
 # =============================================================================
 
 - name: Upload certificates and capture certificate key (FIRST MASTER ONLY)
@@ -240,8 +266,8 @@
   register: kubeadm_upload_certs_result
   changed_when: false
   when:
+    - inventory_hostname == groups['control-plane'][0]
     - run_kubeadm_init | bool
-    - not cluster_ca_check.stat.exists
   run_once: true
   tags:
     - control-plane
@@ -258,6 +284,7 @@
     kubeadm_certificate_key_raw: "{{ kubeadm_upload_certs_result.stdout | trim }}"
   run_once: true
   when:
+    - inventory_hostname == groups['control-plane'][0]
     - run_kubeadm_init | bool
     - kubeadm_upload_certs_result is defined
     - kubeadm_upload_certs_result.stdout is defined
@@ -276,6 +303,8 @@
     mode: '0755'
   become: true
   run_once: true
+  when:
+    - inventory_hostname == groups['control-plane'][0]
   tags:
     - control-plane
     - kubeadm
@@ -288,6 +317,7 @@
   become: true
   run_once: true
   when:
+    - inventory_hostname == groups['control-plane'][0]
     - run_kubeadm_init | bool
     - kubeadm_certificate_key_raw is defined
     - kubeadm_certificate_key_raw | length > 0
@@ -309,6 +339,8 @@
   register: generated_join_command
   changed_when: false
   run_once: true
+  when:
+    - inventory_hostname == groups['control-plane'][0]
   tags:
     - control-plane
     - kubeadm
@@ -318,6 +350,7 @@
     kubeadm_join_command_raw: "{{ generated_join_command.stdout | trim }}"
   run_once: true
   when:
+    - inventory_hostname == groups['control-plane'][0]
     - generated_join_command.stdout is defined
     - generated_join_command.stdout | length > 0
   tags:
@@ -332,6 +365,7 @@
   become: true
   run_once: true
   when:
+    - inventory_hostname == groups['control-plane'][0]
     - kubeadm_join_command_raw is defined
     - kubeadm_join_command_raw | length > 0
   tags:
