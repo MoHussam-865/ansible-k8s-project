@@ -279,15 +279,14 @@
   tags:
     - grafana
     - service
-
-- name: Wait for Grafana to be ready
-  ansible.builtin.wait_for:
-    port: "{{ grafana_port }}"
-    host: "{{ ansible_facts['default_ipv4']['address'] }}"
-    timeout: 60
-    connect_timeout: 2
-  become: true
+  
+- name: Wait until Grafana is responding
+  ansible.builtin.uri:
+    url: "http://{{ ansible_facts['default_ipv4']['address'] }}:{{ grafana_port }}/api/health"
+    method: GET
+    status_code: 200
+  register: grafana_health
+  retries: 60
+  delay: 5
+  until: grafana_health.status == 200
   when: run_grafana_role | bool
-  tags:
-    - grafana
-    - verify
