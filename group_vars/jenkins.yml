@@ -1,0 +1,18 @@
+# =============================================================================
+# group_vars/jenkins.yml (root level)
+# =============================================================================
+# Variables in this file apply ONLY to hosts in the 'jenkins' group.
+# =============================================================================
+
+---
+# Jenkins APT repository configuration
+jenkins_apt_key_url: https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
+jenkins_apt_repo: "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/"
+
+# Jenkins systemd service name
+jenkins_service_name: jenkins
+
+# Node Exporter configuration (if monitoring is enabled on the Jenkins server)
+node_exporter_service_name: prometheus-node-exporter
+node_exporter_service_state: started
+node_exporter_service_enabled: true

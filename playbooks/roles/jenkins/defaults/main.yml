@@ -1,0 +1,63 @@
+# =============================================================================
+# roles/jenkins/defaults/main.yml
+# =============================================================================
+# Default variables for the Jenkins role.
+# =============================================================================
+
+---
+# ---------------------------------------------------------------------------
+# Feature flags
+# ---------------------------------------------------------------------------
+
+# Master switch: set to false to skip ALL Jenkins installation tasks
+run_jenkins_role: true
+
+# Whether to enable the Jenkins service on boot
+jenkins_service_enabled: true
+
+# ---------------------------------------------------------------------------
+# Java installation
+# ---------------------------------------------------------------------------
+
+# Java package to install (OpenJDK 21 JRE is required for Jenkins)
+jenkins_java_package: openjdk-21-jre
+
+# Additional fontconfig package (required for Jenkins UI rendering)
+jenkins_fontconfig_package: fontconfig
+
+# ---------------------------------------------------------------------------
+# Jenkins APT repository
+# ---------------------------------------------------------------------------
+
+# Jenkins GPG key URL
+jenkins_apt_key_url: https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
+
+# Jenkins GPG key destination path
+jenkins_apt_key_path: /etc/apt/keyrings/jenkins-keyring.asc
+
+# Jenkins APT repository source entry
+jenkins_apt_repo: "deb [signed-by={{ jenkins_apt_key_path }}] https://pkg.jenkins.io/debian-stable binary/"
+
+# Jenkins APT sources list file
+jenkins_apt_sources_file: /etc/apt/sources.list.d/jenkins.list
+
+# ---------------------------------------------------------------------------
+# Docker installation
+# ---------------------------------------------------------------------------
+
+# Docker GPG key URL
+docker_apt_key_url: https://download.docker.com/linux/ubuntu/gpg
+
+# Docker GPG key destination path
+docker_apt_key_path: /etc/apt/keyrings/docker.asc
+
+# Docker APT repository sources file
+docker_apt_sources_file: /etc/apt/sources.list.d/docker.sources
+
+# Docker packages to install
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin

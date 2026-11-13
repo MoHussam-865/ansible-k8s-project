@@ -1,0 +1,20 @@
+# =============================================================================
+# roles/jenkins/handlers/main.yml
+# =============================================================================
+# Handlers for the Jenkins role.
+# =============================================================================
+
+---
+- name: restart jenkins
+  ansible.builtin.service:
+    name: "{{ jenkins_service_name }}"
+    state: restarted
+  become: true
+  listen: "restart jenkins"
+
+- name: restart docker
+  ansible.builtin.service:
+    name: "{{ docker_service_name }}"
+    state: restarted
+  become: true
+  listen: "restart docker"

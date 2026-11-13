@@ -10,6 +10,7 @@
 #   3. Kubernetes cluster (base stack + control plane + workers + CNI)
 #   4. Verify cluster health
 #   5. Monitoring stack (Node Exporter + Prometheus + Grafana)
+#   6. Jenkins CI/CD server (install + configure with Docker)
 #
 # Usage:
 #   ansible-playbook playbooks/site.yml
@@ -18,6 +19,7 @@
 #   ansible-playbook playbooks/site.yml --tags bootstrap
 #   ansible-playbook playbooks/site.yml --tags kubernetes,calico
 #   ansible-playbook playbooks/site.yml --tags node_exporter,prometheus
+#   ansible-playbook playbooks/site.yml --tags jenkins
 # =============================================================================
 
 ---
@@ -35,3 +37,6 @@
 
 - name: Stage 12 — Deploy monitoring stack
   ansible.builtin.import_playbook: monitoring.yml
+
+- name: Stage 13 — Install Jenkins CI/CD server
+  ansible.builtin.import_playbook: jenkins.yml

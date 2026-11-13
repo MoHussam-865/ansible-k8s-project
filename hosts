@@ -10,7 +10,8 @@
 #   │   ├── control-plane          # N control-plane nodes (masters)
 #   │   └── workers                # N worker nodes
 #   ├── haproxy                    # HAProxy load balancer node(s)
-#   └── monitoring                 # Prometheus + Grafana server(s)
+#   ├── monitoring                 # Prometheus + Grafana server(s)
+#   └── jenkins                    # Jenkins CI/CD server
 #
 # Ansible connects via SSH using the user set in ansible.cfg (remote_user).
 # Hostname (inventory alias) | ansible_host (IP to SSH into)
@@ -54,6 +55,17 @@ haproxy-01 ansible_host=10.1.0.20
 # -----------------------------------------------------------------------------
 [monitoring]
 monitoring-01 ansible_host=10.1.0.30
+
+# -----------------------------------------------------------------------------
+# jenkins  — Jenkins CI/CD server
+# -----------------------------------------------------------------------------
+# Jenkins is an open-source automation server for CI/CD pipelines.
+# It requires Java, Jenkins itself, and Docker for containerized builds.
+# Access Jenkins at: http://<jenkins-ip>:8080
+# Initial admin password: sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+# -----------------------------------------------------------------------------
+[jenkins]
+jenkins-01 ansible_host=10.1.0.40
 
 # -----------------------------------------------------------------------------
 # cluster  — parent group of ALL nodes with Node Exporter

@@ -1,0 +1,12 @@
+# =============================================================================
+# roles/jenkins/vars/main.yml
+# =============================================================================
+# Internal variables for the Jenkins role.
+# =============================================================================
+
+---
+# Jenkins systemd service name
+jenkins_service_name: jenkins
+
+# Docker systemd service name
+docker_service_name: docker

@@ -1,0 +1,61 @@
+# =============================================================================
+# playbooks/jenkins.yml
+# =============================================================================
+# Jenkins playbook — install and configure Jenkins CI/CD server with Docker.
+#
+# Purpose:
+#   Deploy a fully functional Jenkins server with:
+#   1. Java (OpenJDK 21 JRE) — Jenkins runtime dependency
+#   2. Jenkins from the official APT repository
+#   3. Docker Engine — for containerized builds in Jenkins pipelines
+#   4. 'jenkins' user added to 'docker' group — allows Docker commands
+#      in pipelines without sudo
+#
+# Usage:
+#   ansible-playbook playbooks/jenkins.yml
+#
+# Post-installation:
+#   Access Jenkins at: http://<jenkins-ip>:8080
+#   Initial admin password:
+#     sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+# =============================================================================
+
+---
+- name: Install and configure Jenkins CI/CD server
+  hosts: jenkins
+  gather_facts: true
+  become: true
+
+  pre_tasks:
+    - name: Display provisioning target
+      ansible.builtin.debug:
+        msg: "Configuring {{ ansible_hostname }} as the Jenkins CI/CD server."
+      tags:
+        - always
+
+    - name: Ensure we are running on Ubuntu
+      ansible.builtin.fail:
+        msg: "This playbook requires Ubuntu. Detected: {{ ansible_facts.distribution }}"
+      when: ansible_facts.distribution != "Ubuntu"
+      tags:
+        - always
+
+  roles:
+    - role: jenkins
+      tags:
+        - jenkins
+
+  post_tasks:
+    - name: Display Jenkins installation summary
+      ansible.builtin.debug:
+        msg:
+          - "=== Jenkins Server Deployed ==="
+          - "Jenkins URL: http://{{ ansible_facts['default_ipv4']['address'] }}:8080"
+          - ""
+          - "Initial admin password (SSH into the server and run):"
+          - "  sudo cat /var/lib/jenkins/secrets/initialAdminPassword"
+          - ""
+          - "Docker is installed and the 'jenkins' user is in the 'docker' group."
+          - "Jenkins pipelines can now run Docker commands."
+      tags:
+        - always

@@ -1,0 +1,206 @@
+# =============================================================================
+# roles/jenkins/tasks/main.yml
+# =============================================================================
+# Install and configure Jenkins CI/CD server with Docker support.
+#
+# Jenkins is an open-source automation server that helps automate the
+# building, testing, and deploying of software.
+#
+# What this role does:
+#   1. Install Java (OpenJDK 21 JRE) — required by Jenkins
+#   2. Add the official Jenkins APT repository and install Jenkins
+#   3. Install Docker — so Jenkins pipelines can build and run containers
+#   4. Add the 'jenkins' user to the 'docker' group — allows Jenkins
+#      pipelines to run Docker commands without sudo
+#   5. Ensure services are running and enabled on boot
+# =============================================================================
+
+---
+# =============================================================================
+# TASK 1: Install Java (OpenJDK 21 JRE)
+# =============================================================================
+# Jenkins requires Java to run. OpenJDK 21 JRE is the recommended JRE
+# for Jenkins as of Jenkins 2.452+. The fontconfig package is also required
+# for proper UI rendering in Jenkins.
+# =============================================================================
+
+- name: Install Java and fontconfig prerequisites
+  ansible.builtin.apt:
+    name:
+      - "{{ jenkins_java_package }}"
+      - "{{ jenkins_fontconfig_package }}"
+    state: present
+    update_cache: true
+  become: true
+  when: run_jenkins_role | bool
+  tags:
+    - jenkins
+    - java
+
+# =============================================================================
+# TASK 2: Add Jenkins GPG key
+# =============================================================================
+# Download and install the official Jenkins GPG key so APT can verify
+# the packages from the Jenkins repository.
+# =============================================================================
+
+- name: Ensure /etc/apt/keyrings directory exists
+  ansible.builtin.file:
+    path: "{{ jenkins_apt_key_path | dirname }}"
+    state: directory
+    mode: "0755"
+  become: true
+  when: run_jenkins_role | bool
+  tags:
+    - jenkins
+    - repository
+
+- name: Download Jenkins GPG key
+  ansible.builtin.get_url:
+    url: "{{ jenkins_apt_key_url }}"
+    dest: "{{ jenkins_apt_key_path }}"
+    mode: "0644"
+  become: true
+  when: run_jenkins_role | bool
+  tags:
+    - jenkins
+    - repository
+
+
+# =============================================================================
+# TASK 3: Add Jenkins APT repository
+# =============================================================================
+# Add the Jenkins stable repository to APT sources so we can install
+# the Jenkins package via apt.
+# =============================================================================
+
+- name: Add Jenkins APT repository
+  ansible.builtin.apt_repository:
+    repo: "{{ jenkins_apt_repo }}"
+    filename: "{{ jenkins_apt_sources_file | basename | replace('.list', '') }}"
+    state: present
+    update_cache: true
+  become: true
+  when: run_jenkins_role | bool
+  tags:
+    - jenkins
+    - repository
+
+# =============================================================================
+# TASK 4: Install Jenkins
+# =============================================================================
+
+- name: Install Jenkins
+  ansible.builtin.apt:
+    name: "{{ jenkins_service_name }}"
+    state: present
+  become: true
+  when: run_jenkins_role | bool
+  tags:
+    - jenkins
+    - packages
+
+# =============================================================================
+# TASK 5: Add Docker GPG key
+# =============================================================================
+# Docker requires its own GPG key for package verification.
+# We use the same keyrings directory created above.
+# =============================================================================
+
+- name: Download Docker GPG key
+  ansible.builtin.get_url:
+    url: "{{ docker_apt_key_url }}"
+    dest: "{{ docker_apt_key_path }}"
+    mode: "0644"
+  become: true
+  when: run_jenkins_role | bool
+  tags:
+    - jenkins
+    - docker
+
+
+# =============================================================================
+# TASK 6: Add Docker APT repository
+# =============================================================================
+# Docker maintains its own APT repository at download.docker.com.
+# We use apt_repository module which handles the sources.list entry.
+# =============================================================================
+
+- name: Add Docker APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64 signed-by={{ docker_apt_key_path }}] https://download.docker.com/linux/ubuntu {{ ansible_facts.distribution_release }} stable"
+    filename: docker
+    state: present
+    update_cache: true
+  become: true
+  when: run_jenkins_role | bool
+  tags:
+    - jenkins
+    - docker
+
+# =============================================================================
+# TASK 7: Install Docker
+# =============================================================================
+# Install Docker Engine and related tools so Jenkins pipelines can
+# build and run containers.
+# =============================================================================
+
+- name: Install Docker packages
+  ansible.builtin.apt:
+    name: "{{ docker_packages }}"
+    state: present
+  become: true
+  when: run_jenkins_role | bool
+  tags:
+    - jenkins
+    - docker
+
+# =============================================================================
+# TASK 8: Add jenkins user to docker group
+# =============================================================================
+# By default, Docker requires root or docker-group membership to run
+# commands. Adding the 'jenkins' user to the 'docker' group allows
+# Jenkins pipelines to use Docker without sudo.
+# =============================================================================
+
+- name: Add jenkins user to docker group
+  ansible.builtin.user:
+    name: "{{ jenkins_service_name }}"
+    groups: docker
+    append: true
+  become: true
+  when: run_jenkins_role | bool
+  notify: restart docker
+  tags:
+    - jenkins
+    - docker
+
+# =============================================================================
+# TASK 9: Ensure Jenkins service is running and enabled
+# =============================================================================
+
+- name: Ensure Jenkins service is running and enabled
+  ansible.builtin.service:
+    name: "{{ jenkins_service_name }}"
+    state: started
+    enabled: "{{ jenkins_service_enabled }}"
+  become: true
+  when: run_jenkins_role | bool
+  tags:
+    - jenkins
+    - service
+
+# =============================================================================
+# TASK 10: Ensure Docker service is running and enabled
+# =============================================================================
+
+- name: Ensure Docker service is running and enabled
+  ansible.builtin.service:
+    name: "{{ docker_service_name }}"
+    state: started
+    enabled: true
+  become: true
+  when: run_jenkins_role | bool
+  tags:
+    - jenkins
+    - docker
