@@ -51,7 +51,7 @@
 
 - name: Build HAProxy stats target list for Prometheus
   ansible.builtin.set_fact:
-    haproxy_stats_targets: "{{ haproxy_stats_targets + [(hostvars[item]['ansible_host'] | default(hostvars[item]['inventory_hostname'], true)) ~ ':8404' ] }}"
+    haproxy_stats_targets: "{{ haproxy_stats_targets + [(hostvars[item]['ansible_host'] | default(hostvars[item]['inventory_hostname'], true)) ~ ':9100' ] }}"
   loop: "{{ groups['haproxy'] | default([]) }}"
   when:
     - run_prometheus_role | bool

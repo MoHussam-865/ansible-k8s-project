@@ -26,7 +26,7 @@ haproxy_balance_algorithm: roundrobin
 # ---------------------------------------------------------------------------
 
 # Port for the HAProxy stats page (scraped by Prometheus)
-haproxy_stats_port: 8404
+haproxy_stats_port: 9100
 
 # ---------------------------------------------------------------------------
 # Timeout settings

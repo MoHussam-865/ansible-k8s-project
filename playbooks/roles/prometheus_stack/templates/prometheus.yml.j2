@@ -5,7 +5,7 @@
 #   1. Serve its own web interface on port {{ prometheus_port | default('9090') }}
 #   2. Scrape Node Exporter on ALL cluster infrastructure nodes
 #      (control-plane + workers + haproxy + monitoring)
-#   3. Scrape HAProxy stats on load balancer nodes (port 8404/stats)
+#   3. Scrape HAProxy stats on load balancer nodes (port 9100/stats)
 #   4. Scrape its own metrics for self-monitoring
 # =============================================================================
 

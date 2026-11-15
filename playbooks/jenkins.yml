@@ -41,6 +41,9 @@
         - always
 
   roles:
+    - role: node_exporter
+      tags:
+        - node_exporter
     - role: jenkins
       tags:
         - jenkins

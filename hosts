@@ -80,3 +80,4 @@ control-plane
 workers
 haproxy
 monitoring
+jenkins
