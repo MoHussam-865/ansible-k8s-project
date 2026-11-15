@@ -3,10 +3,9 @@
 # =============================================================================
 # This configures Prometheus to:
 #   1. Serve its own web interface on port {{ prometheus_port | default('9090') }}
-#   2. Scrape Node Exporter on ALL cluster infrastructure nodes
-#      (control-plane + workers + haproxy + monitoring)
-#   3. Scrape HAProxy stats on load balancer nodes (port 9100/stats)
-#   4. Scrape its own metrics for self-monitoring
+#   2. Scrape Node Exporter on ALL infrastructure nodes (port 9100)
+#      (control-plane + workers + haproxy + monitoring + jenkins)
+#   3. Scrape its own metrics for self-monitoring
 # =============================================================================
 
 global:
@@ -38,8 +37,8 @@ scrape_configs:
           host: "{{ ansible_facts['hostname'] | default('localhost') }}"
 
   # ---------------------------------------------------------------------------
-  # Cluster nodes: scrape Node Exporter on every node in the cluster group
-  # (control-plane + workers + haproxy + monitoring)
+  # ALL infrastructure nodes: scrape Node Exporter on port 9100
+  # (control-plane + workers + haproxy + monitoring + jenkins)
   # ---------------------------------------------------------------------------
   - job_name: "kubernetes-cluster"
     scrape_interval: "{{ prometheus_scrape_interval | default('15s') }}"
@@ -51,21 +50,3 @@ scrape_configs:
         labels:
           group: "kubernetes-cluster"
           metric: "node-exporter"
-
-  # ---------------------------------------------------------------------------
-  # HAProxy stats: scrape the HAProxy stats page for load balancer metrics
-  # ---------------------------------------------------------------------------
-  - job_name: "haproxy-stats"
-    scrape_interval: "{{ prometheus_scrape_interval | default('15s') }}"
-    metrics_path: /stats
-    static_configs:
-      - targets:
-{% for target in haproxy_stats_targets | default([]) %}
-          - "{{ target }}"
-{% endfor %}
-        labels:
-          group: "cluster-infrastructure"
-          metric: "haproxy-stats"
-{% if groups['haproxy'] | default([]) | length == 0 %}
-    # No HAProxy targets found — job will show as UP with no data, which is harmless
-{% endif %}
