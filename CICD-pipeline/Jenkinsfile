@@ -1,0 +1,383 @@
+﻿// ============================================================================
+// Jenkins Declarative Pipeline — MicroCRM CI/CD
+// ============================================================================
+//
+// Pipeline flow (GitOps):
+//   1. Developer pushes code -> GitHub webhook fires.
+//   2. Jenkins checks out source and runs tests.
+//   3. Jenkins builds 3 Docker images -> tags each with git commit SHA.
+//   4. Jenkins pushes all images to Docker Hub.
+//   5. Jenkins clones the separate K8S manifests repository.
+//   6. Jenkins updates image tags in Kubernetes YAML files via sed.
+//   7. Jenkins commits + pushes the change to the k8s repo.
+//   8. ArgoCD detects the new commit and syncs the cluster automatically.
+//
+// Why git-SHA tags instead of :latest?
+//   • Traceability — every running pod maps to exactly one commit.
+//   • Rollback     — kubectl set image deploy/api api=<old-sha> is instant.
+//   • Repeatable   — same commit always produces the same artifact.
+// ============================================================================
+
+pipeline {
+
+    // =====================================================================
+    //  AGENT
+    //  Runs on a Jenkins agent labeled 'docker'.
+    //  The agent must have: docker CLI, git, sed, and bash.
+    // =====================================================================
+    agent {
+        label 'docker'
+    }
+
+    // =====================================================================
+    //  PARAMETERS — overridable per-run via Jenkins UI.
+    //  Sensible defaults so the pipeline works out of the box.
+    // =====================================================================
+    parameters {
+        // Docker Hub username / organisation (e.g. "mohussam")
+        string(
+            name: 'DOCKER_HUB_ORG',
+            defaultValue: 'mohussam',
+            description: 'Docker Hub username that owns the image repositories'
+        )
+
+        // URL of the separate Kubernetes manifests repository
+        string(
+            name: 'K8S_MANIFESTS_REPO_URL',
+            defaultValue: 'https://github.com/MoHussam-865/k8s-micro-services',
+            description: 'Git clone URL of the Kubernetes manifests repository'
+        )
+
+        // Branch inside the k8s repo to update (usually main or master)
+        string(
+            name: 'K8S_MANIFESTS_BRANCH',
+            defaultValue: 'main',
+            description: 'Branch in the k8s manifests repo to commit image updates to'
+        )
+
+        // Git credentials ID stored in Jenkins (for cloning k8s repo)
+        string(
+            name: 'GIT_CREDENTIALS_ID',
+            defaultValue: 'github-credentials',
+            description: 'Jenkins credential ID for GitHub (personal access token)'
+        )
+
+        // Docker Hub credentials ID stored in Jenkins
+        string(
+            name: 'DOCKER_HUB_CREDENTIALS_ID',
+            defaultValue: 'dockerhub-credentials',
+            description: 'Jenkins credential ID for Docker Hub (password or token)'
+        )
+    }
+
+    // =====================================================================
+    //  ENVIRONMENT — variables available in every stage.
+    //  GIT_COMMIT_SHORT becomes the immutable Docker image tag.
+    // =====================================================================
+    environment {
+        GIT_COMMIT_SHORT = ''
+        GIT_COMMIT_FULL = ''
+        API_IMAGE = "${params.DOCKER_HUB_ORG}/microcrm-api"
+        FRONTEND_IMAGE = "${params.DOCKER_HUB_ORG}/microcrm-frontend"
+        NOTIFICATION_IMAGE = "${params.DOCKER_HUB_ORG}/microcrm-notification"
+        K8S_CLONE_DIR = 'k8s-manifests'
+    }
+
+    // =====================================================================
+    //  TRIGGERS
+    //  pollSCM checks git every 2 minutes.
+    //  In production, replace with a GitHub webhook trigger.
+    // =====================================================================
+    triggers {
+        pollSCM('H/2 * * * *')
+    }
+
+    // =====================================================================
+    //  STAGES — the CI/CD work, step by step.
+    // =====================================================================
+    stages {
+
+        // ------------------------------------------------------------------
+        //  Stage 1: CHECKOUT SOURCE (application repo)
+        // ------------------------------------------------------------------
+        stage('Checkout Source') {
+            steps {
+                script {
+                    echo '=============================================='
+                    echo ' Stage 1: Checkout Application Source Code'
+                    echo '=============================================='
+
+                    // checkout scm pulls the repo configured in the Jenkins job
+                    checkout scm
+
+                    // Capture commit SHA — this becomes our immutable image tag
+                    env.GIT_COMMIT_FULL = sh(script: 'git rev-parse HEAD',
+                                              returnStdout: true).trim()
+                    env.GIT_COMMIT_SHORT = sh(script: 'git rev-parse --short=7 HEAD',
+                                              returnStdout: true).trim()
+
+                    echo "Building from commit: ${env.GIT_COMMIT_FULL}"
+                    echo "Image tag will be:   ${env.GIT_COMMIT_SHORT}"
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------
+        //  Stage 2: RUN TESTS (fast-fail — stop early if tests break)
+        //  Tests run in parallel across all 3 services to save time.
+        //  TODO: replace echo placeholders with real test commands.
+        // ------------------------------------------------------------------
+        stage('Run Tests') {
+            parallel {
+                stage('Test API Service') {
+                    steps {
+                        dir('api-service') {
+                            script {
+                                echo 'Running API tests...'
+                                sh 'echo "API tests passed (no tests defined yet)"'
+                            }
+                        }
+                    }
+                }
+
+                stage('Test Frontend Service') {
+                    steps {
+                        dir('frontend-service') {
+                            script {
+                                echo 'Running frontend tests...'
+                                sh 'echo "Frontend tests passed (no tests defined yet)"'
+                            }
+                        }
+                    }
+                }
+
+                stage('Test Notification Service') {
+                    steps {
+                        dir('notification-service') {
+                            script {
+                                echo 'Running notification tests...'
+                                sh 'echo "Notification tests passed (no tests defined yet)"'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------
+        //  Stage 3: BUILD DOCKER IMAGES (parallel for speed)
+        //  Each image is tagged twice:
+        //    • <image>:<git-sha> — immutable tag used in k8s deployments
+        //    • <image>:latest    — convenience tag for local dev
+        // ------------------------------------------------------------------
+        stage('Build Docker Images') {
+            parallel {
+                stage('Build API Image') {
+                    steps {
+                        dir('api-service') {
+                            script {
+                                echo "Building ${API_IMAGE}:${env.GIT_COMMIT_SHORT}"
+                                sh """
+                                    docker build \\
+                                        --tag ${API_IMAGE}:${env.GIT_COMMIT_SHORT} \\
+                                        --tag ${API_IMAGE}:latest \\
+                                        --file Dockerfile \\
+                                        .
+                                """
+                            }
+                        }
+                    }
+                }
+
+                stage('Build Frontend Image') {
+                    steps {
+                        dir('frontend-service') {
+                            script {
+                                echo "Building ${FRONTEND_IMAGE}:${env.GIT_COMMIT_SHORT}"
+                                sh """
+                                    docker build \\
+                                        --tag ${FRONTEND_IMAGE}:${env.GIT_COMMIT_SHORT} \\
+                                        --tag ${FRONTEND_IMAGE}:latest \\
+                                        --file Dockerfile \\
+                                        .
+                                """
+                            }
+                        }
+                    }
+                }
+
+                stage('Build Notification Image') {
+                    steps {
+                        dir('notification-service') {
+                            script {
+                                echo "Building ${NOTIFICATION_IMAGE}:${env.GIT_COMMIT_SHORT}"
+                                sh """
+                                    docker build \\
+                                        --tag ${NOTIFICATION_IMAGE}:${env.GIT_COMMIT_SHORT} \\
+                                        --tag ${NOTIFICATION_IMAGE}:latest \\
+                                        --file Dockerfile \\
+                                        .
+                                """
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------
+        //  Stage 4: PUSH IMAGES to DOCKER HUB
+        //  Uses Jenkins credential store — passwords NEVER appear in logs.
+        // ------------------------------------------------------------------
+        stage('Push Images to Docker Hub') {
+            steps {
+                script {
+                    echo '=============================================='
+                    echo ' Stage 4: Push Images to Docker Hub'
+                    echo '=============================================='
+
+                    // Securely inject Docker Hub password from Jenkins credentials
+                    withCredentials([string(
+                        credentialsId: "${params.DOCKER_HUB_CREDENTIALS_ID}",
+                        variable: 'DOCKER_HUB_PASSWORD'
+                    )]) {
+                        sh """
+                            echo "\${DOCKER_HUB_PASSWORD}" | \\
+                            docker login --username ${params.DOCKER_HUB_ORG} --password-stdin
+                        """
+                    }
+
+                    // Push both SHA tag and :latest for each image
+                    sh "docker push ${API_IMAGE}:${env.GIT_COMMIT_SHORT}"
+                    sh "docker push ${API_IMAGE}:latest"
+
+                    sh "docker push ${FRONTEND_IMAGE}:${env.GIT_COMMIT_SHORT}"
+                    sh "docker push ${FRONTEND_IMAGE}:latest"
+
+                    sh "docker push ${NOTIFICATION_IMAGE}:${env.GIT_COMMIT_SHORT}"
+                    sh "docker push ${NOTIFICATION_IMAGE}:latest"
+
+                    echo 'All images pushed successfully.'
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------
+        //  Stage 5: UPDATE KUBERNETES MANIFESTS REPO
+        //  This is the heart of GitOps: update the desired state in Git.
+        //  Jenkins NEVER runs kubectl directly — ArgoCD handles deployment.
+        // ------------------------------------------------------------------
+        stage('Update Kubernetes Manifests') {
+            steps {
+                script {
+                    echo '=============================================='
+                    echo ' Stage 5: Update K8s Manifests Repository'
+                    echo '=============================================='
+
+                    // 1. Clone the k8s manifests repo using stored credentials
+                    withCredentials([string(
+                        credentialsId: "${params.GIT_CREDENTIALS_ID}",
+                        variable: 'GIT_TOKEN'
+                    )]) {
+                        // Build authenticated HTTPS URL: https://<token>@github.com/...
+                        def authUrl = params.K8S_MANIFESTS_REPO_URL
+                            .replace('https://', "https://${GIT_TOKEN}@")
+
+                        sh """git clone --branch ${params.K8S_MANIFESTS_BRANCH} --depth 1 ${authUrl} ${K8S_CLONE_DIR}"""
+                    }
+
+                    // 2. Replace image tags in all YAML files using sed
+                    dir(K8S_CLONE_DIR) {
+                        echo "Updating image tags to ${env.GIT_COMMIT_SHORT}..."
+
+                        // Update API image references
+                        sh """
+                            grep -rl 'image:.*${API_IMAGE}' . | \\
+                            xargs -r sed -i \\
+                                "s|image:.*${API_IMAGE}:.*|image: ${API_IMAGE}:${env.GIT_COMMIT_SHORT}|g"
+                        """
+
+                        // Update Frontend image references
+                        sh """
+                            grep -rl 'image:.*${FRONTEND_IMAGE}' . | \\
+                            xargs -r sed -i \\
+                                "s|image:.*${FRONTEND_IMAGE}:.*|image: ${FRONTEND_IMAGE}:${env.GIT_COMMIT_SHORT}|g"
+                        """
+
+                        // Update Notification image references
+                        sh """
+                            grep -rl 'image:.*${NOTIFICATION_IMAGE}' . | \\
+                            xargs -r sed -i \\
+                                "s|image:.*${NOTIFICATION_IMAGE}:.*|image: ${NOTIFICATION_IMAGE}:${env.GIT_COMMIT_SHORT}|g"
+                        """
+
+                        // Show the diff for auditability in Jenkins logs
+                        sh 'git diff || true'
+                    }
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------
+        //  Stage 6: COMMIT & PUSH changes to the k8s repo
+        //  The [skip ci] tag prevents Jenkins from re-triggering itself.
+        //  ArgoCD detects this commit and syncs the cluster.
+        // ------------------------------------------------------------------
+        stage('Commit & Push K8s Changes') {
+            steps {
+                script {
+                    dir(K8S_CLONE_DIR) {
+                        echo 'Committing updated image tags...'
+
+                        sh '''
+                            git config user.name  "Jenkins CI"
+                            git config user.email "jenkins@microcrm.local"
+                        '''
+
+                        sh 'git add .'
+
+                        // Only commit if there are actual changes
+                        def hasChanges = sh(
+                            script: 'git diff --cached --quiet',
+                            returnStatus: true
+                        )
+
+                        if (hasChanges != 0) {
+                            sh """
+                                git commit -m "ci: update images to ${env.GIT_COMMIT_SHORT} [skip ci]"
+                            """
+                            echo 'Commit created. Pushing to remote...'
+                            sh "git push origin ${params.K8S_MANIFESTS_BRANCH}"
+                            echo 'Push successful! ArgoCD will detect this commit and sync the cluster.'
+                        } else {
+                            echo "No changes detected — images already at ${env.GIT_COMMIT_SHORT}. Skipping commit."
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // =====================================================================
+    //  POST — actions that run after every build, regardless of outcome.
+    // =====================================================================
+    post {
+        always {
+            script {
+                echo 'Cleaning up workspace...'
+                sh "rm -rf ${K8S_CLONE_DIR} || true"
+                sh 'docker logout || true'
+            }
+        }
+
+        success {
+            // TODO: send a Slack / Teams / email notification here
+            echo "Pipeline completed successfully! Images tagged as ${env.GIT_COMMIT_SHORT}"
+        }
+
+        failure {
+            // TODO: send a Slack / Teams / email notification here
+            echo 'Pipeline FAILED. Check the Jenkins console log for details.'
+        }
+    }
+}
