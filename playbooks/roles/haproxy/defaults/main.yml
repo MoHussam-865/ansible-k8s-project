@@ -26,7 +26,8 @@ haproxy_balance_algorithm: roundrobin
 # ---------------------------------------------------------------------------
 
 # Port for the HAProxy stats page (scraped by Prometheus)
-haproxy_stats_port: 9100
+# NOTE: Must NOT conflict with Node Exporter (9100) on the same host.
+haproxy_stats_port: 8404
 
 # ---------------------------------------------------------------------------
 # Timeout settings
